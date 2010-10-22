@@ -10,7 +10,7 @@ public class TestBoundedLRUCache extends TestCase
     public void testInitialState() throws Exception
     {
         // Use Strings as keys, values
-        BoundedLRUCache<String,String> cache = new BoundedLRUCache<String,String>(StringKeyConverter.instance,
+        BoundedLRUCacheElement<String,String> cache = new BoundedLRUCacheElement<String,String>(StringKeyConverter.instance,
                 64, 64 * 1024, /* ttl */ 4);
         // base size; no entries, no content memory usage
         assertEquals(0, cache.size());

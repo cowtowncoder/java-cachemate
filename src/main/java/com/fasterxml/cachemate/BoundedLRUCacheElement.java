@@ -3,8 +3,9 @@ package com.fasterxml.cachemate;
 import java.util.Arrays;
 
 /**
- * Special data structure used for cache components that are based both on
- * staleness/insertion-time limit and capacity limitations (with LRU eviction)
+ * Special data structure used as an element of a cache (or in simplest cases,
+ * as simple single-level in-memory object cachje). Evictions are based both on
+ * staleness/insertion-time limit and capacity limitations (with LRU eviction).
  *<p>
  * Note on implementation: hash area is allocated on construction based on specified
  * maximum number of entries (allocate chunk with size that is next biggest power of two),
@@ -17,7 +18,7 @@ import java.util.Arrays;
  * @param <K>
  * @param <V>
  */
-public class BoundedLRUCache<K, V>
+public class BoundedLRUCacheElement<K, V>
 {
     /**
      * We have about this many fields; just used for estimating rough in-memory size
@@ -125,7 +126,7 @@ public class BoundedLRUCache<K, V>
      *   cache; in seconds.
      */
     @SuppressWarnings("unchecked")
-    public BoundedLRUCache(KeyConverter<K> keyConverter,
+    public BoundedLRUCacheElement(KeyConverter<K> keyConverter,
             int maxEntries, long maxWeight,
             long timeToLiveSecs)
     {
