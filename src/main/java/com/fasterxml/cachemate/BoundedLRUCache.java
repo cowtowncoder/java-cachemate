@@ -2,6 +2,21 @@ package com.fasterxml.cachemate;
 
 import java.util.Arrays;
 
+/**
+ * Special data structure used for cache components that are based both on
+ * staleness/insertion-time limit and capacity limitations (with LRU eviction)
+ *<p>
+ * Note on implementation: hash area is allocated on construction based on specified
+ * maximum number of entries (allocate chunk with size that is next biggest power of two),
+ * and remains static in size unless explicit resizing is requested.
+ * Because of this, it makes sense to use sensible maximum entry count, as well as
+ * maximum weight (rough memory usage estimation)
+ * 
+ * @author tatu
+ *
+ * @param <K>
+ * @param <V>
+ */
 public class BoundedLRUCache<K, V>
 {
     // // // Configuration
@@ -58,11 +73,19 @@ public class BoundedLRUCache<K, V>
     protected Entry<K, V>[] _entries;
     
     /**
-     * Oldest entry in this cache; needed to efficiently clean up
-     * stale entries
+     * Placeholder entry that represents the "old" end of
+     * linkage; oldest and least-recently used entries (accessible
+     * via entry links)
      */
-    protected Entry<K, V> _oldestEntry;
+    protected Entry<K, V> _oldEntryHead = new Entry<K,V>();
 
+    /**
+     * Placeholder entry that represents the "new" end of
+     * linkage; newest and most-recently used entries (accessible
+     * via entry links)
+     */
+    protected Entry<K, V> _newEntryHead = new Entry<K,V>();
+    
     // // // Statistics
     
     /**
@@ -136,28 +159,48 @@ public class BoundedLRUCache<K, V>
      */
     public Entry<K,V> findEntry(long currentTime, K key, int keyHash)
     {
-        int index = (keyHash & (_entries.length - 1));
-        // First, locate the entry
+        int index = _hashIndex(keyHash);
+        // First, locate the entry, but keep track of position within hash/collision chain:
+        Entry<K,V> prev = null;
         Entry<K,V> entry = _entries[index];
-        if (entry != null) {
-            while (entry != null) {
-                if (_keyConverter.keysEqual(key, entry._key)) {
-                    break;
-                }
-                entry = entry._nextCollision;
-            }
-        }
-        // then, if found, verify it is not stale
-        int expireTime = latestStaleTimestamp(currentTime);
+        int expireTime = _latestStaleTimestamp(currentTime);
 
-        // and finally, if aggressively cleaning up, check if stale entries exist
+        while (entry != null) {
+            if ((entry._keyHash == keyHash) && _keyConverter.keysEqual(key, entry._key)) {
+                // And if match, verify it is not stale
+                if (entry._insertTime <= expireTime) { // if stale, remove
+                    _removeEntry(entry, index, prev);
+                    entry = null;
+                } else { // if not stale, move as LRU
+                    // Also: make this the LRU entry (note: _newEntryHead and _oldEntryHead are placeholders)
+                    // first, unlink from previous chain
+                    prev = entry._lessRecentEntry;
+                    Entry<K,V> next = entry._moreRecentEntry;
+                    prev._moreRecentEntry = next;
+                    next._lessRecentEntry = prev;
+                    // then add as new head (wrt LRU)
+                    prev = _newEntryHead;
+                    next = _newEntryHead._lessRecentEntry;
+                    prev._lessRecentEntry = entry;
+                    next._moreRecentEntry = entry;
+
+                    // and finally, update match count; may be used to decide on promotion/demotion
+                    entry._timesReturned += 1;
+                }
+                break;
+            }
+            prev = entry;
+            entry = entry._nextCollision;
+        }
+
+        // also: if aggressively cleaning up, remove stale entries
         int count = _configInvalidatePerGet;
-        while (count > 0 && invalidateOldestIfStale(expireTime)) {
+        while (count > 0 && _invalidateOldestIfStale(expireTime)) {
             --count;
         }
         return entry;
     }
-
+    
     /**
      * @param timestamp Logical timestamp of point when this operation
      *   occurs; usually system time, but may be different for tests. Typically
@@ -166,13 +209,39 @@ public class BoundedLRUCache<K, V>
      * @param key Key of the entry to find value for
      * @param keyHash Hash code for the key
      */
-    public Entry<K,V> removeEntry(long timestamp, K key, int keyHash)
+    public Entry<K,V> removeEntry(long currentTime, K key, int keyHash)
     {
-        // !!! TBI
-        return null;
+        int index = (keyHash & (_entries.length - 1));
+        // First, locate the entry
+        Entry<K,V> prev = null;
+        Entry<K,V> entry = _entries[index];
+        if (entry != null) {
+            while (entry != null) {
+                if ((entry._keyHash == keyHash) && _keyConverter.keysEqual(key, entry._key)) {
+                    _removeEntry(entry, index, prev);
+                    break;
+                }
+                prev = entry;
+                entry = entry._nextCollision;
+            }
+        }
+        // also: if aggressively cleaning up, remove stale entries
+        int count = _configInvalidatePerInsert;
+        if (count > 0) {
+            int expireTime = _latestStaleTimestamp(currentTime);
+            do {
+                if (!_invalidateOldestIfStale(expireTime)) {
+                    break;
+                }
+            } while (--count > 0);
+        }
+        return entry;
     }
 
     /**
+     * Method for putting specified entry in this cache; if an entry with the key
+     * exists, it will be replaced.
+     * 
      * @param timestamp Logical timestamp of point when this operation
      *   occurs; usually system time, but may be different for tests. Typically
      *   same for all parts of a single logical transaction (multi-level
@@ -182,20 +251,76 @@ public class BoundedLRUCache<K, V>
      * @param weight Combined weights of key and value, not including
      *    overhead of entry wrapper
      *    
-     * @return Existing value for the key, if any; usually null but could be non-null
+     * @return Previous value for the key, if any; usually null but could be non-null
      *    for race condition cases
      */
-    public Entry<K,V> putEntry(long timestamp, K key, int keyHash,
+    public Entry<K,V> putEntry(long currentTime, K key, int keyHash,
             V value, int weight)
     {
-        // !!! TBI
-        return null;
+        // First things first: let's see if there is an existing entry with key:
+        int index = (keyHash & (_entries.length - 1));
+        Entry<K,V> prev = null;
+        Entry<K,V> existingEntry = _entries[index];
+        if (existingEntry != null) {
+            while (existingEntry != null) {
+                if ((existingEntry._keyHash == keyHash) && _keyConverter.keysEqual(key, existingEntry._key)) {
+                    _removeEntry(existingEntry, index, prev);
+                    break;
+                }
+                prev = existingEntry;
+                existingEntry = existingEntry._nextCollision;
+            }
+        }
+        // Either way, need to add the new entry next, as newest and MRU
+        Entry<K,V> newEntry = new Entry<K,V>(key, keyHash, value, _timeToTimestamp(currentTime), weight,
+                _entries[index]);
+        _entries[index] = newEntry;
+        // ok; first insertion-order linked list:
+        Entry<K,V> next = _newEntryHead;
+        prev = next._olderEntry;
+        next._olderEntry = newEntry;
+        newEntry._newerEntry = next;
+        prev._newerEntry = newEntry;
+        newEntry._olderEntry = prev;
+        // then LRU listing
+        prev = next._lessRecentEntry;
+        next._lessRecentEntry = newEntry;
+        newEntry._moreRecentEntry = next;
+        prev._moreRecentEntry = newEntry;
+        newEntry._lessRecentEntry = prev;
+        // then update stats
+        _currentEntries++;
+        _currentWeight += weight;
+
+        // Ok, then; let's see if we need to remove stale entries
+        int count = _configInvalidatePerInsert;
+        int expireTime = _latestStaleTimestamp(currentTime);
+        while ((count > 0) || (_currentEntries > _maxEntries) || (_currentWeight > _maxWeight)) {
+            if (!_invalidateOldestIfStale(expireTime)) {
+                break;
+            }
+            --count;
+        }
+        // And if we are still above limit, remove LRU entries
+        count = 0;
+        while ((_currentEntries > _maxEntries) || (_currentWeight > _maxWeight)) {
+            Entry<K,V> lru = _oldEntryHead._moreRecentEntry;
+            if (lru == _newEntryHead) { // should never occur...
+                throw new IllegalStateException("Flushed "+count+" entries, cache empty, still too many entries ("+_currentEntries
+                        +") or too much weight ("+_currentWeight+")");
+            }
+            _removeEntry(lru);
+            ++count;
+        }
+        
+        return existingEntry;
     }
     
     public void removaAll()
     {
         // Easy enough to drop all:
-        _oldestEntry = null;
+        _newEntryHead = new Entry<K,V>();
+        _oldEntryHead = new Entry<K,V>();
         Arrays.fill(_entries, null);
         _currentWeight = 0L;
         _currentEntries = 0;
@@ -239,20 +364,6 @@ public class BoundedLRUCache<K, V>
      */
 
     /**
-     * Helper method that will return internal timestamp value (in units of
-     * 256 milliseconds, i.e. quarter second) of the latest timepoint
-     * that is stale.
-     */
-    public int latestStaleTimestamp(long currentTimeMsecs)
-    {
-        // First, convert current time to units of ~1/4 second
-        int currentTime = (int) (currentTimeMsecs >> 8);
-        // then go back by time-to-live time units:
-        currentTime -= _configTimeToLive;
-        return currentTime;
-    }
-
-    /**
      * Method for invalidating all stale entries this cache has (if any)
      * 
      * @param currentTimeMsecs Logical timestamp when this operation occurs
@@ -267,9 +378,9 @@ public class BoundedLRUCache<K, V>
     public int invalidateStale(long currentTimeMsecs, int maxToInvalidate)
     {
         int count = 0;
-        int earliestNonStale = latestStaleTimestamp(currentTimeMsecs);
+        int earliestNonStale = _latestStaleTimestamp(currentTimeMsecs);
         
-        while (count < maxToInvalidate && invalidateOldestIfStale(earliestNonStale)) {
+        while (count < maxToInvalidate && _invalidateOldestIfStale(earliestNonStale)) {
             ++count;
         }
         return count;
@@ -281,39 +392,107 @@ public class BoundedLRUCache<K, V>
     /**********************************************************************
      */
 
+    protected final static int _timeToTimestamp(long currentTimeMsecs)
+    {
+        return (int) (currentTimeMsecs >> 8);
+    }
+
+    private final int _hashIndex(int keyHash) {
+        return keyHash & (_entries.length - 1);
+    }
+    
+    /**
+     * Helper method that will return internal timestamp value (in units of
+     * 256 milliseconds, i.e. quarter second) of the latest timepoint
+     * that is stale.
+     */
+    protected int _latestStaleTimestamp(long currentTimeMsecs)
+    {
+        // First, convert current time to units of ~1/4 second
+        int currentTime = _timeToTimestamp(currentTimeMsecs);
+        // then go back by time-to-live time units:
+        currentTime -= _configTimeToLive;
+        return currentTime;
+    }
+    
     /**
      * Method that will delete the oldest entry in the cache, if there
      * is at least one entry in the cache, and it was inserted at or
      * before given timepoint.
      */
-    protected boolean invalidateOldestIfStale(int latestStaleTime)
+    protected boolean _invalidateOldestIfStale(int latestStaleTime)
     {
-        Entry<K,V> oldest = _oldestEntry;
-        if (oldest != null) {
+        Entry<K,V> oldest = _oldEntryHead._newerEntry;
+        if (oldest != _newEntryHead) {
             /* ok now: timestamps we use are relative (due to truncation), so
              * we MUST compare by subtraction, compare difference
              */
             int diff = oldest._insertTime - latestStaleTime;
             if (diff <= 0) { // created at or before expiration time (latest timestamp that is stale)
-                --_currentEntries;
-                _currentWeight -= oldest._weight;
-                _oldestEntry = _oldestEntry._nextNewer;
-                 return true;
+                return true;
             }
         }
         return false;
     }
 
-    protected boolean invalidateOldest()
+    protected boolean _invalidateOldest()
     {
-        Entry<K,V> oldest = _oldestEntry;
-        if (oldest != null) {
+        Entry<K,V> oldest = _oldEntryHead._newerEntry;
+        if (oldest != _newEntryHead) {
             --_currentEntries;
             _currentWeight -= oldest._weight;
-            _oldestEntry = _oldestEntry._nextNewer;
-             return true;
+            Entry<K,V> prev = oldest._olderEntry;
+            Entry<K,V> next = oldest._newerEntry;
+            prev._newerEntry = next;
+            next._olderEntry = prev;
+            return true;
         }
         return false;
+    }
+    
+    protected void _removeEntry(Entry<K,V> entry)
+    {
+        // Ok, need to locate entry in hash...
+        int index = _hashIndex(entry._keyHash);
+        Entry<K,V> curr = _entries[index];
+        Entry<K,V> prev = null;
+        while (curr != null) {
+            if (curr == entry) {
+                _removeEntry(entry, index, prev);
+                return;
+            }
+            prev = curr;
+            curr = curr._nextCollision;
+        }
+        // should never occur, so:
+        throw new IllegalStateException("Internal data error: could not find entry (index "+index+"/"+_entries.length+"), key "+entry._key);
+    }
+    
+    protected void _removeEntry(Entry<K,V> entry, int hashIndex, Entry<K,V> prevInHash)
+    {
+        // First, update counts
+        --_currentEntries;
+        _currentWeight -= entry._weight;
+
+        // Unlink from hash area
+        Entry<K,V> next = entry._nextCollision;
+        if (prevInHash == null) {
+            _entries[hashIndex] = next;
+        } else {
+            prevInHash._nextCollision = next;
+        }
+
+        // Unlink from LRU
+        Entry<K,V> prev = entry._olderEntry;
+        next = entry._newerEntry;
+        prev._newerEntry = next;
+        next._olderEntry = prev;
+
+        // Unlink from oldest/newest link
+        prev = entry._lessRecentEntry;
+        next = entry._moreRecentEntry;
+        prev._moreRecentEntry = next;
+        next._lessRecentEntry = prev;
     }
     
     /*
@@ -329,6 +508,19 @@ public class BoundedLRUCache<K, V>
      */
     public final static class Entry<K, V>
     {
+        // // // Constants
+        
+        /**
+         * This is our guestimation of per-entry base overhead JVM incurs; it is used
+         * to get closer approximation of true memory usage of cache structure.
+         * We will use 16 bytes for base object, and otherwise typical 32-bit system
+         * values for 11 fields we have. This gives estimation of 60 bytes; not
+         * including referenced objects (key, value)
+         */
+        public final static int MEM_USAGE_PER_ENTRY = 16 + (11 * 4);
+
+        // // // Contents
+
         /**
          * Entry key
          */
@@ -346,6 +538,8 @@ public class BoundedLRUCache<K, V>
          */
         public final V _value;
 
+        // // // Size, staleness
+        
         /**
          * Timepoint when entry was added in cache, in units of 256 milliseconds
          * (about quarter of a second). Used for staleness checks.
@@ -356,25 +550,54 @@ public class BoundedLRUCache<K, V>
          * Weight of this entry, including both key and value
          */
         public final int _weight;
+
+        // // // Linked lists
         
         /**
-         * Link to entry added after current entry; null if this is the newest
-         * entry
+         * Link to entry added right after this entry; never null, but may point
+         * to placeholder
          */
-        public Entry<K, V> _nextNewer;
-        
+        public Entry<K, V> _newerEntry;
+
+        /**
+         * Link to entry that was added right before this entry; never null, but may point
+         * to placeholder
+         */
+        public Entry<K, V> _olderEntry;
+
+        /**
+         * Entry that was more recently accessed than this entry;
+         * never null but may point to a placeholder entry
+         */
+        public Entry<K, V> _moreRecentEntry;
+
+        /**
+         * Entry that was less recently accessed than this entry
+         */
+        public Entry<K, V> _lessRecentEntry;
+
         /**
          * Link to next entry in collision list; will have hash code that resulted
          * in same bucket as this entry. Null if no collisions for bucket
          */
-        public final Entry<K, V> _nextCollision;
+        public Entry<K, V> _nextCollision;
 
+        // // // Statistics
+        
         /**
          * Number of times this entry has been succesfully retrieved from
          * the cache; may be used to decide if entry is to be promoted/demoted,
          * in addition to basic LRU ordering
          */
         public int _timesReturned;
+
+        /**
+         * Constructors used for constructing placeholder instances (heads and tails
+         * of linked lists)
+         */
+        public Entry() {
+            this(null, 0, null, 0, 0, null);
+        }
         
         public Entry(K key, int keyHash, V value, int insertTime, int weight,
                 Entry<K,V> nextCollision)
@@ -389,10 +612,10 @@ public class BoundedLRUCache<K, V>
 
         public void linkNextNewer(Entry<K,V> next)
         {
-            if (_nextNewer != null) { // sanity check
+            if (_newerEntry != null) { // sanity check
                 throw new IllegalStateException("Already had entry with key "+_key+" (hash code 0x"+Integer.toHexString(_keyHash)+")");
             }
-            _nextNewer = next;
+            _newerEntry = next;
         }
     }
 }
