@@ -5,7 +5,7 @@ package com.fasterxml.cachemate;
  * of object instances needed. Also provides metadata useful for
  * caller.ache
  */
-public class CacheEntry<K, V>
+public final class CacheEntry<K, V>
 {
     // // // Constants
     
@@ -23,7 +23,7 @@ public class CacheEntry<K, V>
     /**
      * Entry key
      */
-    protected final K _key;
+    private final K _key;
 
     /**
      * Hash code of the key value (since it is possible
@@ -35,7 +35,7 @@ public class CacheEntry<K, V>
     /**
      * Entry value;
      */
-    protected final V _value;
+    private final V _value;
 
     // // // Size, staleness
     
@@ -129,9 +129,9 @@ public class CacheEntry<K, V>
     /**********************************************************************
      */
 
-    public K getKey() { return _key; }
+    public final K getKey() { return _key; }
 
-    public V getValue() { return _value; }
+    public final V getValue() { return _value; }
 
     /*
     /**********************************************************************
@@ -140,5 +140,33 @@ public class CacheEntry<K, V>
      */
 
     @Override
-    public int hashCode() { return _key.hashCode(); }
+    public final int hashCode() { return _key.hashCode(); }
+
+    @Override
+    public final String toString() {
+        return new StringBuilder().append(_key).append(':').append(_value).toString();
+    }
+    
+    /*
+    /**********************************************************************
+    /* Package access
+    /**********************************************************************
+     */
+    
+    protected void unlink()
+    {
+        // first unlink from oldest/newest linkage
+        CacheEntry<K,V> prev = _olderEntry;
+        CacheEntry<K,V> next = _newerEntry;
+        
+        prev._newerEntry = next;
+        next._olderEntry = prev;
+
+        // then from most/least recent linkage
+        prev = _lessRecentEntry;
+        next = _moreRecentEntry;
+        
+        prev._moreRecentEntry = next;
+        next._lessRecentEntry = prev;
+    }
 }

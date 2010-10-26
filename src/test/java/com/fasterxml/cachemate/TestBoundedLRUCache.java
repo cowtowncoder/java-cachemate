@@ -71,11 +71,11 @@ public class TestBoundedLRUCache extends TestCase
         assertEquals("xxx", cache.newestEntry(time).getKey());
         assertEquals("xxx", cache.mostRecentEntry(time).getKey());
     }
-    
+
     public void testSimpleAccess() throws Exception
     {
         BoundedLRUCacheElement<String,String> cache = new BoundedLRUCacheElement<String,String>(StringKeyConverter.instance,
-                64, 64 * 1024, /* ttl */ 4);
+                64, 64 * 1024, 4); // 4 == ttl in seconds
         long time = 3000L; // at "3 seconds"
         assertNull(cache.putEntry(time, "abc", "def", 3));
 
@@ -91,14 +91,65 @@ public class TestBoundedLRUCache extends TestCase
         assertEquals("abc", cache.leastRecentEntry(time).getKey());
         assertEquals("xxx", cache.newestEntry(time).getKey());
         assertEquals("xxx", cache.mostRecentEntry(time).getKey());
+
+        
+        assertEquals("[abc, 12, xxx]", cache.keysFromOldestToNewest().toString());
+        assertEquals("[abc, 12, xxx]", cache.keysFromLeastToMostRecent().toString());
         
         // with access, should change
-        assertEquals("34", cache.findEntry(time, "12"));
+        entry = cache.findEntry(time, "12");
+        assertEquals("34", entry.getValue());
+
         // oldest/newest do not change
-        assertEquals("abc", cache.oldestEntry(time).getKey());
-        assertEquals("xxx", cache.newestEntry(time).getKey());
+        assertEquals("[abc, 12, xxx]", cache.keysFromOldestToNewest().toString());
         // but most recent does
-        assertEquals("abc", cache.leastRecentEntry(time).getKey());
-        assertEquals("34", cache.mostRecentEntry(time).getKey());
+        assertEquals("[abc, xxx, 12]", cache.keysFromLeastToMostRecent().toString());
+
+        // and even more so...
+        assertEquals("def", cache.findEntry(time, "abc").getValue());
+        assertEquals("[xxx, 12, abc]", cache.keysFromLeastToMostRecent().toString());
+        
+        assertEquals(3, cache.size());
+        assertEquals(12, cache.contentsWeight());
+    }
+
+    public void testSimpleStale() throws Exception
+    {
+        BoundedLRUCacheElement<String,String> cache = new BoundedLRUCacheElement<String,String>(StringKeyConverter.instance,
+                64, 64 * 1024, 4); // TTL 4 seconds
+        assertNull(cache.putEntry(3000L, "a", "1", 5)); // stale at about 7 seconds
+        assertNull(cache.putEntry(4000L, "b", "2", 3));
+        assertNull(cache.putEntry(5000L, "c", "3", 1));
+        assertNull(cache.putEntry(6000L, "d", "4", 9));
+
+        assertEquals(4, cache.size());
+        assertEquals(18, cache.contentsWeight());
+
+        // at 7.5 seconds, one entry should be stale:
+        assertNull(cache.findEntry(7500L, "nosuchkey"));
+        assertEquals(3, cache.size());
+        assertEquals(13, cache.contentsWeight());
+
+        assertEquals("b", cache.oldestEntry(7500L).getKey());
+        assertEquals("d", cache.newestEntry(7500L).getKey());
+        assertEquals("d", cache.mostRecentEntry(7500L).getKey());
+        assertEquals("b", cache.leastRecentEntry(7500L).getKey());
+
+        assertEquals("[b, c, d]", cache.keysFromOldestToNewest().toString());
+        assertEquals("[b, c, d]", cache.keysFromLeastToMostRecent().toString());
+        
+        assertEquals("2", cache.findEntry(7500L, "b").getValue());
+        assertEquals("[b, c, d]", cache.keysFromOldestToNewest().toString());
+        assertEquals("[c, d, b]", cache.keysFromLeastToMostRecent().toString());
+
+        // at 8.5 seconds, remove one more:
+        assertNull(cache.findEntry(8500L, "b"));
+        assertEquals(2, cache.size());
+        assertEquals(10, cache.contentsWeight());
+        assertEquals("[c, d]", cache.keysFromOldestToNewest().toString());
+        assertEquals("[c, d]", cache.keysFromLeastToMostRecent().toString());
+        assertEquals("3", cache.findEntry(8500L, "c").getValue());
+        assertEquals("[c, d]", cache.keysFromOldestToNewest().toString());
+        assertEquals("[d, c]", cache.keysFromLeastToMostRecent().toString());
     }
 }

@@ -1,6 +1,6 @@
 package com.fasterxml.cachemate;
 
-import java.util.Arrays;
+import java.util.*;
 
 /**
  * Special data structure used as an element of a cache (or in simplest cases,
@@ -195,7 +195,7 @@ public class BoundedLRUCacheElement<K, V>
         int expireTime = _latestStaleTimestamp(currentTime);
 
         while (entry != null) {
-            if ((entry._keyHash == keyHash) && _keyConverter.keysEqual(key, entry._key)) {
+            if ((entry._keyHash == keyHash) && _keyConverter.keysEqual(key, entry.getKey())) {
                 // And if match, verify it is not stale
                 if (entry._insertTime <= expireTime) { // if stale, remove
                     _removeEntry(entry, index, prev);
@@ -208,10 +208,12 @@ public class BoundedLRUCacheElement<K, V>
                     prev._moreRecentEntry = next;
                     next._lessRecentEntry = prev;
                     // then add as new head (wrt LRU)
-                    prev = _newEntryHead;
-                    next = _newEntryHead._lessRecentEntry;
-                    prev._lessRecentEntry = entry;
+                    next = _newEntryHead;
+                    prev = _newEntryHead._lessRecentEntry;
+                    prev._moreRecentEntry = entry;
+                    entry._lessRecentEntry = prev;
                     next._moreRecentEntry = entry;
+                    entry._moreRecentEntry = next;
 
                     // and finally, update match count; may be used to decide on promotion/demotion
                     entry._timesReturned += 1;
@@ -264,7 +266,7 @@ public class BoundedLRUCacheElement<K, V>
         CacheEntry<K,V> entry = _entries[index];
         if (entry != null) {
             while (entry != null) {
-                if ((entry._keyHash == keyHash) && _keyConverter.keysEqual(key, entry._key)) {
+                if ((entry._keyHash == keyHash) && _keyConverter.keysEqual(key, entry.getKey())) {
                     _removeEntry(entry, index, prev);
                     break;
                 }
@@ -331,7 +333,7 @@ public class BoundedLRUCacheElement<K, V>
         CacheEntry<K,V> existingEntry = _entries[index];
         if (existingEntry != null) {
             while (existingEntry != null) {
-                if ((existingEntry._keyHash == keyHash) && _keyConverter.keysEqual(key, existingEntry._key)) {
+                if ((existingEntry._keyHash == keyHash) && _keyConverter.keysEqual(key, existingEntry.getKey())) {
                     _removeEntry(existingEntry, index, prev);
                     break;
                 }
@@ -480,7 +482,7 @@ public class BoundedLRUCacheElement<K, V>
     protected CacheEntry<K,V> oldestEntry(long currentTime)
     {
         // first, ensure we have dumped all stale entries, then return what's left if anything
-        while (_invalidateOldestIfStale(_timeToTimestamp(currentTime))) { }
+        while (_invalidateOldestIfStale(_latestStaleTimestamp(currentTime))) { }
         CacheEntry<K,V> oldest = _oldEntryHead._newerEntry;
         return (oldest != _newEntryHead) ? oldest : null;
     }
@@ -488,7 +490,7 @@ public class BoundedLRUCacheElement<K, V>
     protected CacheEntry<K,V> newestEntry(long currentTime)
     {
         // first, ensure we have dumped all stale entries, then return what's left if anything
-        while (_invalidateOldestIfStale(_timeToTimestamp(currentTime))) { }
+        while (_invalidateOldestIfStale(_latestStaleTimestamp(currentTime))) { }
         CacheEntry<K,V> newest = _newEntryHead._olderEntry;
         return (newest != _oldEntryHead) ? newest : null;
     }
@@ -496,7 +498,7 @@ public class BoundedLRUCacheElement<K, V>
     protected CacheEntry<K,V> leastRecentEntry(long currentTime)
     {
         // first, ensure we have dumped all stale entries, then return what's left if anything
-        while (_invalidateOldestIfStale(_timeToTimestamp(currentTime))) { }
+        while (_invalidateOldestIfStale(_latestStaleTimestamp(currentTime))) { }
         CacheEntry<K,V> leastRecent = _oldEntryHead._moreRecentEntry;
         return (leastRecent != _newEntryHead) ? leastRecent : null;
     }
@@ -504,9 +506,27 @@ public class BoundedLRUCacheElement<K, V>
     protected CacheEntry<K,V> mostRecentEntry(long currentTime)
     {
         // first, ensure we have dumped all stale entries, then return what's left if anything
-        while (_invalidateOldestIfStale(_timeToTimestamp(currentTime))) { }
+        while (_invalidateOldestIfStale(_latestStaleTimestamp(currentTime))) { }
         CacheEntry<K,V> mostRecent = _newEntryHead._lessRecentEntry;
         return (mostRecent != _oldEntryHead) ? mostRecent : null;
+    }
+
+    protected List<K> keysFromOldestToNewest()
+    {
+        ArrayList<K> keys = new ArrayList<K>();
+        for (CacheEntry<K,V> entry = _oldEntryHead._newerEntry; entry != _newEntryHead; entry = entry._newerEntry) {
+            keys.add(entry.getKey());
+        }
+        return keys;
+    }
+
+    protected List<K> keysFromLeastToMostRecent()
+    {
+        ArrayList<K> keys = new ArrayList<K>();
+        for (CacheEntry<K,V> entry = _oldEntryHead._moreRecentEntry; entry != _newEntryHead; entry = entry._moreRecentEntry) {
+            keys.add(entry.getKey());
+        }
+        return keys;
     }
     
     /*
@@ -517,7 +537,11 @@ public class BoundedLRUCacheElement<K, V>
 
     protected final static int _timeToTimestamp(long currentTimeMsecs)
     {
-        return (int) (currentTimeMsecs >> 8);
+        int time = (int) (currentTimeMsecs >> 8); // divide by 256, to quarter-seconds
+        if (time < 0) {
+            time &= 0x7FFFFFFF;
+        }
+        return time;
     }
 
     private final int _hashIndex(int keyHash) {
@@ -542,6 +566,9 @@ public class BoundedLRUCacheElement<K, V>
      * Method that will delete the oldest entry in the cache, if there
      * is at least one entry in the cache, and it was inserted at or
      * before given timepoint.
+     * 
+     * @param latestStaleTime Timestamp that indicates maximum timestamp that is considered
+     *    stale (in units of ~1/4 seconds)
      */
     protected boolean _invalidateOldestIfStale(int latestStaleTime)
     {
@@ -554,10 +581,7 @@ public class BoundedLRUCacheElement<K, V>
             if (diff <= 0) { // created at or before expiration time (latest timestamp that is stale)
                 --_currentEntries;
                 _currentContentsWeight -= oldest._weight;
-                CacheEntry<K,V> prev = oldest._olderEntry;
-                CacheEntry<K,V> next = oldest._newerEntry;
-                prev._newerEntry = next;
-                next._olderEntry = prev;
+                oldest.unlink();
                 return true;
             }
         }
@@ -570,10 +594,7 @@ public class BoundedLRUCacheElement<K, V>
         if (oldest != _newEntryHead) {
             --_currentEntries;
             _currentContentsWeight -= oldest._weight;
-            CacheEntry<K,V> prev = oldest._olderEntry;
-            CacheEntry<K,V> next = oldest._newerEntry;
-            prev._newerEntry = next;
-            next._olderEntry = prev;
+            oldest.unlink();
             return true;
         }
         return false;
@@ -594,7 +615,7 @@ public class BoundedLRUCacheElement<K, V>
             curr = curr._nextCollision;
         }
         // should never occur, so:
-        throw new IllegalStateException("Internal data error: could not find entry (index "+index+"/"+_entries.length+"), key "+entry._key);
+        throw new IllegalStateException("Internal data error: could not find entry (index "+index+"/"+_entries.length+"), key "+entry.getKey());
     }
     
     protected void _removeEntry(CacheEntry<K,V> entry, int hashIndex, CacheEntry<K,V> prevInHash)
@@ -610,18 +631,8 @@ public class BoundedLRUCacheElement<K, V>
         } else {
             prevInHash._nextCollision = next;
         }
-
-        // Unlink from LRU
-        CacheEntry<K,V> prev = entry._olderEntry;
-        next = entry._newerEntry;
-        prev._newerEntry = next;
-        next._olderEntry = prev;
-
-        // Unlink from oldest/newest link
-        prev = entry._lessRecentEntry;
-        next = entry._moreRecentEntry;
-        prev._moreRecentEntry = next;
-        next._lessRecentEntry = prev;
+        // and from linked lists:
+        entry.unlink();
     }
 
     private void _resetOldestAndNewest()
