@@ -1,4 +1,7 @@
-package com.fasterxml.cachemate;
+package com.fasterxml.cachemate.converters;
+
+import com.fasterxml.cachemate.KeyConverter;
+import com.fasterxml.cachemate.PlatformConstants;
 
 public class ByteKeyConverter extends KeyConverter<byte[]>
 {

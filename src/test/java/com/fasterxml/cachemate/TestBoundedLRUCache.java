@@ -1,5 +1,7 @@
 package com.fasterxml.cachemate;
 
+import com.fasterxml.cachemate.converters.StringKeyConverter;
+
 import junit.framework.TestCase;
 
 public class TestBoundedLRUCache extends TestCase
