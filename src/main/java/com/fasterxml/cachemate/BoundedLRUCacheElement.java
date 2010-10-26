@@ -82,21 +82,21 @@ public class BoundedLRUCacheElement<K, V>
     /**
      * Primary hash area for entries
      */
-    protected Entry<K, V>[] _entries;
+    protected CacheEntry<K, V>[] _entries;
     
     /**
      * Placeholder entry that represents the "old" end of
      * linkage; oldest and least-recently used entries (accessible
      * via entry links)
      */
-    protected Entry<K, V> _oldEntryHead;
+    protected CacheEntry<K, V> _oldEntryHead;
 
     /**
      * Placeholder entry that represents the "new" end of
      * linkage; newest and most-recently used entries (accessible
      * via entry links)
      */
-    protected Entry<K, V> _newEntryHead;
+    protected CacheEntry<K, V> _newEntryHead;
     
     // // // Statistics
     
@@ -139,7 +139,7 @@ public class BoundedLRUCacheElement<K, V>
         while (hashAreaSize < maxEntries) {
             hashAreaSize += hashAreaSize;
         }
-        _entries = (Entry<K,V>[]) new Entry<?,?>[hashAreaSize];
+        _entries = (CacheEntry<K,V>[]) new CacheEntry<?,?>[hashAreaSize];
 
         // take into account base mem usage of the cache (crude, but...), including hash area
         _maxContentsWeight = maxWeight - BASE_MEM_USAGE - (hashAreaSize * PlatformConstants.BASE_FIELD_MEMORY_USAGE);
@@ -170,7 +170,7 @@ public class BoundedLRUCacheElement<K, V>
      *   lookup or removal)
      * @param key Key of the entry to find value for
      */
-    public Entry<K,V> findEntry(long currentTime, K key)
+    public CacheEntry<K,V> findEntry(long currentTime, K key)
     {
         return findEntry(currentTime, key, _keyConverter.keyHash(key));
     }
@@ -186,12 +186,12 @@ public class BoundedLRUCacheElement<K, V>
      * @param key Key of the entry to find value for
      * @param keyHash Hash code for the key
      */
-    public Entry<K,V> findEntry(long currentTime, K key, int keyHash)
+    public CacheEntry<K,V> findEntry(long currentTime, K key, int keyHash)
     {
         int index = _hashIndex(keyHash);
         // First, locate the entry, but keep track of position within hash/collision chain:
-        Entry<K,V> prev = null;
-        Entry<K,V> entry = _entries[index];
+        CacheEntry<K,V> prev = null;
+        CacheEntry<K,V> entry = _entries[index];
         int expireTime = _latestStaleTimestamp(currentTime);
 
         while (entry != null) {
@@ -204,7 +204,7 @@ public class BoundedLRUCacheElement<K, V>
                     // Also: make this the LRU entry (note: _newEntryHead and _oldEntryHead are placeholders)
                     // first, unlink from previous chain
                     prev = entry._lessRecentEntry;
-                    Entry<K,V> next = entry._moreRecentEntry;
+                    CacheEntry<K,V> next = entry._moreRecentEntry;
                     prev._moreRecentEntry = next;
                     next._lessRecentEntry = prev;
                     // then add as new head (wrt LRU)
@@ -240,7 +240,7 @@ public class BoundedLRUCacheElement<K, V>
      *   lookup or removal)
      * @param key Key of the entry to find value for
      */
-    public Entry<K,V> removeEntry(long currentTime, K key)
+    public CacheEntry<K,V> removeEntry(long currentTime, K key)
     {
         return removeEntry(currentTime, key, _keyConverter.keyHash(key));
     }
@@ -256,12 +256,12 @@ public class BoundedLRUCacheElement<K, V>
      * @param key Key of the entry to find value for
      * @param keyHash Hash code for the key
      */
-    public Entry<K,V> removeEntry(long currentTime, K key, int keyHash)
+    public CacheEntry<K,V> removeEntry(long currentTime, K key, int keyHash)
     {
         int index = (keyHash & (_entries.length - 1));
         // First, locate the entry
-        Entry<K,V> prev = null;
-        Entry<K,V> entry = _entries[index];
+        CacheEntry<K,V> prev = null;
+        CacheEntry<K,V> entry = _entries[index];
         if (entry != null) {
             while (entry != null) {
                 if ((entry._keyHash == keyHash) && _keyConverter.keysEqual(key, entry._key)) {
@@ -301,7 +301,7 @@ public class BoundedLRUCacheElement<K, V>
      * @return Previous value for the key, if any; usually null but could be non-null
      *    for race condition cases
      */
-    public Entry<K,V> putEntry(long currentTime, K key, V value, int weight)
+    public CacheEntry<K,V> putEntry(long currentTime, K key, V value, int weight)
     {
         return putEntry(currentTime, key, _keyConverter.keyHash(key), value, weight);
     }
@@ -322,13 +322,13 @@ public class BoundedLRUCacheElement<K, V>
      * @return Previous value for the key, if any; usually null but could be non-null
      *    for race condition cases
      */
-    public Entry<K,V> putEntry(long currentTime, K key, int keyHash,
+    public CacheEntry<K,V> putEntry(long currentTime, K key, int keyHash,
             V value, int weight)
     {
         // First things first: let's see if there is an existing entry with key:
         int index = (keyHash & (_entries.length - 1));
-        Entry<K,V> prev = null;
-        Entry<K,V> existingEntry = _entries[index];
+        CacheEntry<K,V> prev = null;
+        CacheEntry<K,V> existingEntry = _entries[index];
         if (existingEntry != null) {
             while (existingEntry != null) {
                 if ((existingEntry._keyHash == keyHash) && _keyConverter.keysEqual(key, existingEntry._key)) {
@@ -340,17 +340,17 @@ public class BoundedLRUCacheElement<K, V>
             }
         }
         // Either way, need to add the new entry next, as newest and MRU
-        Entry<K,V> newEntry = new Entry<K,V>(key, keyHash, value, _timeToTimestamp(currentTime), weight,
+        CacheEntry<K,V> newEntry = new CacheEntry<K,V>(key, keyHash, value, _timeToTimestamp(currentTime), weight,
                 _entries[index]);
         _entries[index] = newEntry;
         // ok; first insertion-order linked list:
-        Entry<K,V> next = _newEntryHead;
+        CacheEntry<K,V> next = _newEntryHead;
         prev = next._olderEntry;
         next._olderEntry = newEntry;
         newEntry._newerEntry = next;
         prev._newerEntry = newEntry;
         newEntry._olderEntry = prev;
-        // then LRU listing
+        // then LRU listing (insertion counts as access, hence new entry will be most-recently-used)
         prev = next._lessRecentEntry;
         next._lessRecentEntry = newEntry;
         newEntry._moreRecentEntry = next;
@@ -372,7 +372,7 @@ public class BoundedLRUCacheElement<K, V>
         // And if we are still above limit, remove LRU entries
         count = 0;
         while ((_currentEntries > _maxEntries) || (_currentContentsWeight > _maxContentsWeight)) {
-            Entry<K,V> lru = _oldEntryHead._moreRecentEntry;
+            CacheEntry<K,V> lru = _oldEntryHead._moreRecentEntry;
             if (lru == _newEntryHead) { // should never occur...
                 throw new IllegalStateException("Flushed "+count+" entries, cache empty, still too many entries ("+_currentEntries
                         +") or too much weight ("+_currentContentsWeight+")");
@@ -473,6 +473,44 @@ public class BoundedLRUCacheElement<K, V>
     
     /*
     /**********************************************************************
+    /* Support for unit tests
+    /**********************************************************************
+     */
+    
+    protected CacheEntry<K,V> oldestEntry(long currentTime)
+    {
+        // first, ensure we have dumped all stale entries, then return what's left if anything
+        while (_invalidateOldestIfStale(_timeToTimestamp(currentTime))) { }
+        CacheEntry<K,V> oldest = _oldEntryHead._newerEntry;
+        return (oldest != _newEntryHead) ? oldest : null;
+    }
+
+    protected CacheEntry<K,V> newestEntry(long currentTime)
+    {
+        // first, ensure we have dumped all stale entries, then return what's left if anything
+        while (_invalidateOldestIfStale(_timeToTimestamp(currentTime))) { }
+        CacheEntry<K,V> newest = _newEntryHead._olderEntry;
+        return (newest != _oldEntryHead) ? newest : null;
+    }
+
+    protected CacheEntry<K,V> leastRecentEntry(long currentTime)
+    {
+        // first, ensure we have dumped all stale entries, then return what's left if anything
+        while (_invalidateOldestIfStale(_timeToTimestamp(currentTime))) { }
+        CacheEntry<K,V> leastRecent = _oldEntryHead._moreRecentEntry;
+        return (leastRecent != _newEntryHead) ? leastRecent : null;
+    }
+
+    protected CacheEntry<K,V> mostRecentEntry(long currentTime)
+    {
+        // first, ensure we have dumped all stale entries, then return what's left if anything
+        while (_invalidateOldestIfStale(_timeToTimestamp(currentTime))) { }
+        CacheEntry<K,V> mostRecent = _newEntryHead._lessRecentEntry;
+        return (mostRecent != _oldEntryHead) ? mostRecent : null;
+    }
+    
+    /*
+    /**********************************************************************
     /* Internal methods
     /**********************************************************************
      */
@@ -507,13 +545,19 @@ public class BoundedLRUCacheElement<K, V>
      */
     protected boolean _invalidateOldestIfStale(int latestStaleTime)
     {
-        Entry<K,V> oldest = _oldEntryHead._newerEntry;
+        CacheEntry<K,V> oldest = _oldEntryHead._newerEntry;
         if (oldest != _newEntryHead) {
             /* ok now: timestamps we use are relative (due to truncation), so
              * we MUST compare by subtraction, compare difference
              */
             int diff = oldest._insertTime - latestStaleTime;
             if (diff <= 0) { // created at or before expiration time (latest timestamp that is stale)
+                --_currentEntries;
+                _currentContentsWeight -= oldest._weight;
+                CacheEntry<K,V> prev = oldest._olderEntry;
+                CacheEntry<K,V> next = oldest._newerEntry;
+                prev._newerEntry = next;
+                next._olderEntry = prev;
                 return true;
             }
         }
@@ -522,12 +566,12 @@ public class BoundedLRUCacheElement<K, V>
 
     protected boolean _invalidateOldest()
     {
-        Entry<K,V> oldest = _oldEntryHead._newerEntry;
+        CacheEntry<K,V> oldest = _oldEntryHead._newerEntry;
         if (oldest != _newEntryHead) {
             --_currentEntries;
             _currentContentsWeight -= oldest._weight;
-            Entry<K,V> prev = oldest._olderEntry;
-            Entry<K,V> next = oldest._newerEntry;
+            CacheEntry<K,V> prev = oldest._olderEntry;
+            CacheEntry<K,V> next = oldest._newerEntry;
             prev._newerEntry = next;
             next._olderEntry = prev;
             return true;
@@ -535,12 +579,12 @@ public class BoundedLRUCacheElement<K, V>
         return false;
     }
     
-    protected void _removeEntry(Entry<K,V> entry)
+    protected void _removeEntry(CacheEntry<K,V> entry)
     {
         // Ok, need to locate entry in hash...
         int index = _hashIndex(entry._keyHash);
-        Entry<K,V> curr = _entries[index];
-        Entry<K,V> prev = null;
+        CacheEntry<K,V> curr = _entries[index];
+        CacheEntry<K,V> prev = null;
         while (curr != null) {
             if (curr == entry) {
                 _removeEntry(entry, index, prev);
@@ -553,14 +597,14 @@ public class BoundedLRUCacheElement<K, V>
         throw new IllegalStateException("Internal data error: could not find entry (index "+index+"/"+_entries.length+"), key "+entry._key);
     }
     
-    protected void _removeEntry(Entry<K,V> entry, int hashIndex, Entry<K,V> prevInHash)
+    protected void _removeEntry(CacheEntry<K,V> entry, int hashIndex, CacheEntry<K,V> prevInHash)
     {
         // First, update counts
         --_currentEntries;
         _currentContentsWeight -= entry._weight;
 
         // Unlink from hash area
-        Entry<K,V> next = entry._nextCollision;
+        CacheEntry<K,V> next = entry._nextCollision;
         if (prevInHash == null) {
             _entries[hashIndex] = next;
         } else {
@@ -568,7 +612,7 @@ public class BoundedLRUCacheElement<K, V>
         }
 
         // Unlink from LRU
-        Entry<K,V> prev = entry._olderEntry;
+        CacheEntry<K,V> prev = entry._olderEntry;
         next = entry._newerEntry;
         prev._newerEntry = next;
         next._olderEntry = prev;
@@ -582,135 +626,11 @@ public class BoundedLRUCacheElement<K, V>
 
     private void _resetOldestAndNewest()
     {
-        _newEntryHead = new Entry<K,V>();
-        _oldEntryHead = new Entry<K,V>();
+        _newEntryHead = new CacheEntry<K,V>();
+        _oldEntryHead = new CacheEntry<K,V>();
         _newEntryHead._olderEntry = _oldEntryHead;
         _newEntryHead._lessRecentEntry = _oldEntryHead;
         _oldEntryHead._newerEntry = _newEntryHead;
         _oldEntryHead._moreRecentEntry = _newEntryHead;
-    }
-    
-    /*
-    /**********************************************************************
-    /* Helper classes
-    /**********************************************************************
-     */
-
-    /**
-     * Entry for cache; contains both key and value, to reduce number
-     * of object instances needed. Also provides metadata useful for
-     * caller.
-     */
-    public final static class Entry<K, V>
-    {
-        // // // Constants
-        
-        /**
-         * This is our guestimation of per-entry base overhead JVM incurs; it is used
-         * to get closer approximation of true memory usage of cache structure.
-         * We will use 16 bytes for base object, and otherwise typical 32-bit system
-         * values for 11 fields we have. This gives estimation of 60 bytes; not
-         * including referenced objects (key, value)
-         */
-        public final static int MEM_USAGE_PER_ENTRY = 16 + (11 * 4);
-
-        // // // Contents
-
-        /**
-         * Entry key
-         */
-        public final K _key;
-
-        /**
-         * Hash code of the key value (since it is possible
-         * that hashCode of key itself is not useful, as is the case
-         * for byte[])
-         */
-        public final int _keyHash;
-
-        /**
-         * Entry value;
-         */
-        public final V _value;
-
-        // // // Size, staleness
-        
-        /**
-         * Timepoint when entry was added in cache, in units of 256 milliseconds
-         * (about quarter of a second). Used for staleness checks.
-         */
-        public final int _insertTime;
-        
-        /**
-         * Weight of this entry, including both key and value
-         */
-        public final int _weight;
-
-        // // // Linked lists
-        
-        /**
-         * Link to entry added right after this entry; never null, but may point
-         * to placeholder
-         */
-        public Entry<K, V> _newerEntry;
-
-        /**
-         * Link to entry that was added right before this entry; never null, but may point
-         * to placeholder
-         */
-        public Entry<K, V> _olderEntry;
-
-        /**
-         * Entry that was more recently accessed than this entry;
-         * never null but may point to a placeholder entry
-         */
-        public Entry<K, V> _moreRecentEntry;
-
-        /**
-         * Entry that was less recently accessed than this entry
-         */
-        public Entry<K, V> _lessRecentEntry;
-
-        /**
-         * Link to next entry in collision list; will have hash code that resulted
-         * in same bucket as this entry. Null if no collisions for bucket
-         */
-        public Entry<K, V> _nextCollision;
-
-        // // // Statistics
-        
-        /**
-         * Number of times this entry has been succesfully retrieved from
-         * the cache; may be used to decide if entry is to be promoted/demoted,
-         * in addition to basic LRU ordering
-         */
-        public int _timesReturned;
-
-        /**
-         * Constructors used for constructing placeholder instances (heads and tails
-         * of linked lists)
-         */
-        public Entry() {
-            this(null, 0, null, 0, 0, null);
-        }
-        
-        public Entry(K key, int keyHash, V value, int insertTime, int weight,
-                Entry<K,V> nextCollision)
-        {
-            _key = key;
-            _value = value;
-            _keyHash = keyHash;
-            _insertTime = insertTime;
-            _weight = weight;
-            _nextCollision = nextCollision;
-        }
-
-        public void linkNextNewer(Entry<K,V> next)
-        {
-            if (_newerEntry != null) { // sanity check
-                throw new IllegalStateException("Already had entry with key "+_key+" (hash code 0x"+Integer.toHexString(_keyHash)+")");
-            }
-            _newerEntry = next;
-        }
     }
 }
