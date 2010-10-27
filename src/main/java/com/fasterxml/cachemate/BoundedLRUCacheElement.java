@@ -212,7 +212,7 @@ public class BoundedLRUCacheElement<K, V>
                     prev = _newEntryHead._lessRecentEntry;
                     prev._moreRecentEntry = entry;
                     entry._lessRecentEntry = prev;
-                    next._moreRecentEntry = entry;
+                    next._lessRecentEntry = entry;
                     entry._moreRecentEntry = next;
 
                     // and finally, update match count; may be used to decide on promotion/demotion

@@ -1,10 +1,16 @@
 package com.fasterxml.cachemate;
 
+import java.util.*;
+
 import com.fasterxml.cachemate.converters.StringKeyConverter;
 
 import junit.framework.TestCase;
 
-public class TestBoundedLRUCache extends TestCase
+/**
+ * Unit tests verifying correct functioning of {@link BoundedLRUCacheElement}
+ * as stand-alone cache component.
+ */
+public class TestBoundedLRUCacheElement extends TestCase
 {
     /**
      * Unit test to verify that cache starts empty and with specific settings.
@@ -100,13 +106,16 @@ public class TestBoundedLRUCache extends TestCase
         entry = cache.findEntry(time, "12");
         assertEquals("34", entry.getValue());
 
+        assertEquals(3, cache.size());
         // oldest/newest do not change
         assertEquals("[abc, 12, xxx]", cache.keysFromOldestToNewest().toString());
         // but most recent does
         assertEquals("[abc, xxx, 12]", cache.keysFromLeastToMostRecent().toString());
 
         // and even more so...
+        assertEquals(3, cache.size());
         assertEquals("def", cache.findEntry(time, "abc").getValue());
+        assertEquals("[abc, 12, xxx]", cache.keysFromOldestToNewest().toString());
         assertEquals("[xxx, 12, abc]", cache.keysFromLeastToMostRecent().toString());
         
         assertEquals(3, cache.size());
@@ -151,5 +160,99 @@ public class TestBoundedLRUCache extends TestCase
         assertEquals("3", cache.findEntry(8500L, "c").getValue());
         assertEquals("[c, d]", cache.keysFromOldestToNewest().toString());
         assertEquals("[d, c]", cache.keysFromLeastToMostRecent().toString());
+    }
+
+    public void testSimpleRemoval() throws Exception
+    {
+        BoundedLRUCacheElement<String,String> cache = new BoundedLRUCacheElement<String,String>(StringKeyConverter.instance,
+                64, 64 * 1024, 4); // 4 == ttl in seconds
+        long time = 3000L; // at "3 seconds"
+        assertNull(cache.putEntry(time, "a", "1", 1));
+        assertNull(cache.putEntry(time, "b", "2", 2));
+        assertNull(cache.putEntry(time, "c", "3", 3));
+        assertNull(cache.putEntry(time, "d", "4", 4));
+        assertNull(cache.putEntry(time, "e", "5", 5));
+        assertEquals(5, cache.size());
+        assertEquals(15, cache.contentsWeight());
+
+        assertEquals("[a, b, c, d, e]", cache.keysFromOldestToNewest().toString());
+        assertEquals("[a, b, c, d, e]", cache.keysFromLeastToMostRecent().toString());
+
+        CacheEntry<String,String> entry = cache.removeEntry(time, "c");
+        assertNotNull(entry);
+        assertEquals("3", entry.getValue());
+        assertEquals(4, cache.size());
+        assertEquals(12, cache.contentsWeight());
+        assertEquals("[a, b, d, e]", cache.keysFromOldestToNewest().toString());
+        assertEquals("[a, b, d, e]", cache.keysFromLeastToMostRecent().toString());
+
+        // dummy removals do nothing:
+        assertNull(cache.removeEntry(time, "c"));
+        assertNull(cache.removeEntry(time, "3"));
+        assertEquals(4, cache.size());
+        assertEquals(12, cache.contentsWeight());
+        assertEquals("[a, b, d, e]", cache.keysFromOldestToNewest().toString());
+        assertEquals("[a, b, d, e]", cache.keysFromLeastToMostRecent().toString());
+
+        // then some more accesses... removals, find, addition
+        assertEquals("2", cache.removeEntry(time, "b").getValue());
+        assertEquals("5", cache.removeEntry(time, "e").getValue());
+        assertEquals(2, cache.size());
+        assertEquals(5, cache.contentsWeight());
+        assertEquals("[a, d]", cache.keysFromOldestToNewest().toString());
+        assertEquals("[a, d]", cache.keysFromLeastToMostRecent().toString());
+        assertEquals("4", cache.findEntry(time, "d").getValue());
+        assertEquals("[a, d]", cache.keysFromOldestToNewest().toString());
+        assertEquals("[a, d]", cache.keysFromLeastToMostRecent().toString());
+        assertNull(cache.findEntry(time, "b"));
+        assertNull(cache.putEntry(time, "f", "6", 6));
+        assertEquals(3, cache.size());
+        assertEquals(11, cache.contentsWeight());
+        assertEquals("[a, d, f]", cache.keysFromOldestToNewest().toString());
+        assertEquals("[a, d, f]", cache.keysFromLeastToMostRecent().toString());
+    }
+
+    /**
+     * And then let's test a longer sequence of operations, combination of inserts, removals
+     * and finds with bounded key set (100 keys).
+     */
+    public void testRandomOperations()
+    {
+        LinkedHashMap<String,Integer> map = new LinkedHashMap<String,Integer>(100, 0.8f, true);
+        BoundedLRUCacheElement<String,Integer> cache = new BoundedLRUCacheElement<String,Integer>(StringKeyConverter.instance,
+                500, 64 * 1024, 4);
+
+        Random rnd = new Random(123);
+        final long time = 9000L;
+        for (int i = 0; i < 99999; ++i) {
+            int oper = rnd.nextInt() & 3;
+            Integer arg = rnd.nextInt() & 255;
+            String key = String.valueOf(arg);
+            CacheEntry<String,Integer> entry = null;
+            Integer resultArg, old = null;
+
+            switch (oper) {
+            case 0: // insert
+                old = map.put(key, arg);
+                entry = cache.putEntry(time, key, arg, 1);
+                break;
+            case 1: // remove
+                old = map.remove(key);
+                entry = cache.removeEntry(time, key);
+                break;
+            default: // find, twice as many as inserts/removals
+                old = map.get(key);
+                entry = cache.findEntry(time, key);
+            }
+            resultArg = (entry == null) ? null : entry.getValue();
+            assertEquals("Results should have been same (oper "+oper+")", old, resultArg);
+
+            // verify invariants
+            assertEquals(map.size(), cache.size());
+            assertEquals(map.size(),(int) cache.contentsWeight());
+        }
+
+        // And finally, let's ensure resulting ordering is identical
+        assertEquals(map.keySet().toString(), cache.keysFromLeastToMostRecent().toString());
     }
 }
