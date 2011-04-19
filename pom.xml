@@ -5,7 +5,7 @@
     <artifactId>oss-parent</artifactId>
     <version>5</version>
   </parent>
-  <groupId>com.fasterml</groupId>
+  <groupId>com.fasterxml</groupId>
   <artifactId>cachemate</artifactId>
   <name>Cachemate</name>
   <version>0.1.1-SNAPSHOT</version>
