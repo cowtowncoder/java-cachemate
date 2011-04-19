@@ -8,7 +8,7 @@
   <groupId>com.fasterml</groupId>
   <artifactId>cachemate</artifactId>
   <name>Cachemate</name>
-  <version>0.1.0</version>
+  <version>0.1.1-SNAPSHOT</version>
   <packaging>bundle</packaging>
   <description>Library for simple in-memory, in-process caching of POJOs.
   </description>
