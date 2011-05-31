@@ -78,6 +78,69 @@ public class TestBoundedLRUCacheElement extends TestCase
         assertEquals("xxx", cache.mostRecentEntry(time).getKey());
     }
 
+    /**
+     * Test for ensuring state remains valid when insertion leads to
+     * removal due to size constraints
+     */
+    public void testInsertWithOverflow() throws Exception
+    {
+        // no time-based expiration (1000 seconds)
+        BoundedLRUCacheElement<String,String> cache = new BoundedLRUCacheElement<String,String>(StringKeyConverter.instance,
+                3, 3 * 1024, 1000L);
+        // invalidate one entry per get-operation
+        cache.setConfigInvalidatePerGet(1);
+        
+        long time = 3000L; // at "3 seconds"
+        assertNull(cache.putEntry(time, "abc", "def", 3));
+        assertEquals(1, cache.size());
+        assertEquals(3, cache.contentsWeight());
+        ++time;
+        
+        assertNull(cache.putEntry(time, "bcd", "123", 4));
+        assertEquals(2, cache.size());
+        assertEquals(7, cache.contentsWeight());
+        ++time;
+
+        assertNull(cache.putEntry(time, "cde", "3", 5));
+        assertEquals(3, cache.size());
+        assertEquals(12, cache.contentsWeight());
+        ++time;
+
+        // this should result in removal of the first entry, "abc"
+        assertNull(cache.putEntry(time, "def", "x", 6));
+        assertEquals(3, cache.size());
+        assertEquals(15, cache.contentsWeight());
+        ++time;
+
+        // this for second entry
+        assertNull(cache.putEntry(time, "efg", "x", 2));
+        assertEquals(3, cache.size());
+        assertEquals(13, cache.contentsWeight());
+        ++time;
+
+        // and this for the third original entry
+        assertNull(cache.putEntry(time, "fgh", "x", 1));
+        assertEquals(3, cache.size());
+        assertEquals(9, cache.contentsWeight());
+        ++time;
+
+        // finally, let's move ahead in time, forcing expiration when doing gets
+        // (configured to do at most one removal per get)
+        time = 3000L * (1001L * 1000L);
+
+        assertNull(cache.findEntry(time, "abc"));
+        assertEquals(2, cache.size());
+        assertEquals(3L, cache.contentsWeight());
+        assertNull(cache.findEntry(time, "abc"));
+        assertEquals(1, cache.size());
+        assertEquals(1L, cache.contentsWeight());
+
+        // but how about mixing with inserts?
+        assertNull(cache.putEntry(time, "xxx", "yyy", 9));
+        assertEquals(1, cache.size());
+        assertEquals(9, cache.contentsWeight());
+    }
+    
     public void testSimpleAccess() throws Exception
     {
         BoundedLRUCacheElement<String,String> cache = new BoundedLRUCacheElement<String,String>(StringKeyConverter.instance,
@@ -224,7 +287,8 @@ public class TestBoundedLRUCacheElement extends TestCase
 
         Random rnd = new Random(123);
         final long time = 9000L;
-        for (int i = 0; i < 99999; ++i) {
+        final int REP_COUNT = 999999;
+        for (int i = 0; i < REP_COUNT; ++i) {
             int oper = rnd.nextInt() & 3;
             Integer arg = rnd.nextInt() & 255;
             String key = String.valueOf(arg);

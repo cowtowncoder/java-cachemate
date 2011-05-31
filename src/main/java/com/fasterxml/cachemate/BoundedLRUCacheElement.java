@@ -13,10 +13,10 @@ import java.util.*;
  * Because of this, it makes sense to use sensible maximum entry count, as well as
  * maximum weight (rough memory usage estimation)
  * 
- * @author tatu
+ * @author Tatu Saloranta
  *
- * @param <K>
- * @param <V>
+ * @param <K> Type of keys cache element contains
+ * @param <V> Type of values cache element containts
  */
 public class BoundedLRUCacheElement<K, V>
 {
@@ -151,8 +151,18 @@ public class BoundedLRUCacheElement<K, V>
     /* Public API, config access, resizing
     /**********************************************************************
      */
-    
-    // To be implemented!!!
+
+    /*
+    // More to be added:
+     */
+
+    public int getConfigInvalidatePerGet() {
+        return _configInvalidatePerGet;
+    }
+
+    public void setConfigInvalidatePerGet(int value) {
+        _configInvalidatePerGet = value;
+    }
     
     /*
     /**********************************************************************
@@ -236,7 +246,7 @@ public class BoundedLRUCacheElement<K, V>
      * Method for trying to remove entry with specified key. Returns removed
      * entry, if one found; otherwise returns null
      * 
-     * @param timestamp Logical timestamp of point when this operation
+     * @param currentTime Logical timestamp of point when this operation
      *   occurs; usually system time, but may be different for tests. Typically
      *   same for all parts of a single logical transaction (multi-level
      *   lookup or removal)
@@ -251,7 +261,7 @@ public class BoundedLRUCacheElement<K, V>
      * Method for trying to remove entry with specified key. Returns removed
      * entry, if one found; otherwise returns null
      * 
-     * @param timestamp Logical timestamp of point when this operation
+     * @param currentTime Logical timestamp of point when this operation
      *   occurs; usually system time, but may be different for tests. Typically
      *   same for all parts of a single logical transaction (multi-level
      *   lookup or removal)
@@ -291,7 +301,7 @@ public class BoundedLRUCacheElement<K, V>
      * Method for putting specified entry in this cache; if an entry with the key
      * exists, it will be replaced.
      * 
-     * @param timestamp Logical timestamp of point when this operation
+     * @param currentTime Logical timestamp of point when this operation
      *   occurs; usually system time, but may be different for tests. Typically
      *   same for all parts of a single logical transaction (multi-level
      *   lookup or removal)
@@ -312,7 +322,7 @@ public class BoundedLRUCacheElement<K, V>
      * Method for putting specified entry in this cache; if an entry with the key
      * exists, it will be replaced.
      * 
-     * @param timestamp Logical timestamp of point when this operation
+     * @param currentTime Logical timestamp of point when this operation
      *   occurs; usually system time, but may be different for tests. Typically
      *   same for all parts of a single logical transaction (multi-level
      *   lookup or removal)
@@ -382,11 +392,10 @@ public class BoundedLRUCacheElement<K, V>
             _removeEntry(lru);
             ++count;
         }
-        
         return existingEntry;
     }
     
-    public void removaAll()
+    public void removeAll()
     {
         // Easy enough to drop all:
         _resetOldestAndNewest();
@@ -402,7 +411,9 @@ public class BoundedLRUCacheElement<K, V>
     /**********************************************************************
      */
 
-    public final int size() { return _currentEntries; }
+    public final int size() {
+        return _currentEntries;
+    }
 
     /**
      * Returns crude estimated memory usage for entries cache contains, not
@@ -471,6 +482,38 @@ public class BoundedLRUCacheElement<K, V>
             ++count;
         }
         return count;
+    }
+
+    /*
+    /**********************************************************************
+    /* Diagnostic methods
+    /**********************************************************************
+     */
+    
+    /**
+     * Method that tries to cross-check statistics to ensure that they are
+     * correct and compatible with each other; and if not, throw an
+     * {@link IllegalArgumentException} with details.
+     * Note that this should never need to be used for normal use; but
+     * may be called in case there are suspicions that the internal state
+     * could be corrupt due to synchronization issues (incorrect multi-threaded
+     * use of instance without proper synchronization)
+     */
+    protected void checkSanity()
+    {
+        int actualCount = 0;
+
+        // First: calculate real entry count from hash table and spill-over links
+        for (CacheEntry<K,V> entry : _entries) {
+            while (entry != null) {
+                ++actualCount;
+                entry = entry._nextCollision;
+            }
+        }
+        // and compare it to assumed number of entries
+        if (actualCount != _currentEntries) {
+            throw new IllegalStateException("Invalid count: actual "+actualCount+"; expected "+_currentEntries);
+        }
     }
     
     /*
@@ -579,9 +622,7 @@ public class BoundedLRUCacheElement<K, V>
              */
             int diff = oldest._insertTime - latestStaleTime;
             if (diff <= 0) { // created at or before expiration time (latest timestamp that is stale)
-                --_currentEntries;
-                _currentContentsWeight -= oldest._weight;
-                oldest.unlink();
+                _removeEntry(oldest);
                 return true;
             }
         }
@@ -592,9 +633,7 @@ public class BoundedLRUCacheElement<K, V>
     {
         CacheEntry<K,V> oldest = _oldEntryHead._newerEntry;
         if (oldest != _newEntryHead) {
-            --_currentEntries;
-            _currentContentsWeight -= oldest._weight;
-            oldest.unlink();
+            _removeEntry(oldest);
             return true;
         }
         return false;
@@ -633,6 +672,8 @@ public class BoundedLRUCacheElement<K, V>
         }
         // and from linked lists:
         entry.unlink();
+
+checkSanity();
     }
 
     private void _resetOldestAndNewest()
