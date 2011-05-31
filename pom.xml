@@ -116,7 +116,7 @@
           <configuration>
             <instructions>
               <Bundle-Name>cachemate</Bundle-Name>
-              <Bundle-SymbolicName>${pom.artifactId}</Bundle-SymbolicName>
+              <Bundle-SymbolicName>${project.artifactId}</Bundle-SymbolicName>
               <Bundle-Description>Type introspection library</Bundle-Description>
               <Bundle-Vendor>fasterml.com</Bundle-Vendor>
               <Import-Package>

@@ -305,8 +305,8 @@ public class BoundedLRUCacheElement<K, V>
      *   occurs; usually system time, but may be different for tests. Typically
      *   same for all parts of a single logical transaction (multi-level
      *   lookup or removal)
-     * @param key Key of the entry to find value for
-     * @param keyHash Hash code for the key
+     * @param key Key of the entry to insert
+     * @param value Value for the entry to insert
      * @param weight Combined weights of key and value, not including
      *    overhead of entry wrapper
      *    
@@ -326,8 +326,9 @@ public class BoundedLRUCacheElement<K, V>
      *   occurs; usually system time, but may be different for tests. Typically
      *   same for all parts of a single logical transaction (multi-level
      *   lookup or removal)
-     * @param key Key of the entry to find value for
+     * @param key Key of the entry to insert
      * @param keyHash Hash code for the key
+     * @param value Value for the entry to insert
      * @param weight Combined weights of key and value, not including
      *    overhead of entry wrapper
      *    
@@ -395,6 +396,9 @@ public class BoundedLRUCacheElement<K, V>
         return existingEntry;
     }
     
+    /**
+     * Method for clearing up the cache by removing all entries.
+     */
     public void removeAll()
     {
         // Easy enough to drop all:
