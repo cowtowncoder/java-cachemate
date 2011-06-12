@@ -1,11 +1,17 @@
-package com.fasterxml.cachemate;
+package com.fasterxml.cachemate.pojo;
 
 import java.util.*;
+
+import com.fasterxml.cachemate.KeyConverter;
+import com.fasterxml.cachemate.PlatformConstants;
+import com.fasterxml.cachemate.CacheElement;
 
 /**
  * Special data structure used as an element of a cache (or in simplest cases,
  * as simple single-level in-memory object cachje). Evictions are based both on
  * staleness/insertion-time limit and capacity limitations (with LRU eviction).
+ * Keys and values are POJOs (as opposed to being serialized byte sequences);
+ * and only single _key is used.
  *<p>
  * Note on implementation: hash area is allocated on construction based on specified
  * maximum number of entries (allocate chunk with size that is next biggest power of two),
@@ -18,7 +24,9 @@ import java.util.*;
  * @param <K> Type of keys cache element contains
  * @param <V> Type of values cache element containts
  */
-public class BoundedLRUCacheElement<K, V>
+public class POJOCacheElement<K, V>
+    extends POJOCacheElementBase<K, V, POJOCacheEntry<K, V>>
+    implements CacheElement<K, V>
 {
     /**
      * We have about this many fields; just used for estimating rough in-memory size
@@ -32,88 +40,13 @@ public class BoundedLRUCacheElement<K, V>
     // // // Configuration
 
     protected final KeyConverter<K> _keyConverter;
-    
-    /**
-     * Maximum weight (approximate size) of all entries cache can contain.
-     * Set to maximum weight allowed minus overhead of the cache structure
-     * itself.
-     */
-    protected long _maxContentsWeight;
 
-    /**
-     * Maximum number of entries that can be stored in the cache
-     */
-    protected int _maxEntries;
-
-    /**
-     * Length of time entries will remain non-stale in cache after being inserted;
-     * measure in units of 256 milliseconds (about quarter of a second). Unit chosen
-     * to allow using ints for time calculation.
-     */
-    protected int _configTimeToLive;
-    
-    /**
-     * Setting that defines how many entries are to be checked for staleness
-     * when finding entries; 0 means that no checks are made
-     */
-    protected int _configInvalidatePerGet = 1;
-
-    /**
-     * Setting that defines how many entries are to be checked for staleness
-     * when adding an entry (even if no free space is needed); 0 means that no checks would be made
-     */
-    protected int _configInvalidatePerInsert = 2;
-    
-    // // // Current load
-
-    /**
-     * Total current weight (approximate size) of all keys and entries in
-     * the cache.
-     */
-    protected long _currentContentsWeight;
-
-    /**
-     * Total number of entries in the cache
-     */
-    protected int _currentEntries;
-    
     // // // Actual entries
 
     /**
      * Primary hash area for entries
      */
-    protected CacheEntry<K, V>[] _entries;
-    
-    /**
-     * Placeholder entry that represents the "old" end of
-     * linkage; oldest and least-recently used entries (accessible
-     * via entry links)
-     */
-    protected CacheEntry<K, V> _oldEntryHead;
-
-    /**
-     * Placeholder entry that represents the "new" end of
-     * linkage; newest and most-recently used entries (accessible
-     * via entry links)
-     */
-    protected CacheEntry<K, V> _newEntryHead;
-    
-    // // // Statistics
-    
-    /**
-     * Number of times an entry has been found within cache
-     */
-    protected int _hitCount;
-    
-    /**
-     * Number of times an entry has been found within cache
-     */
-    protected int _missCount;
-
-    /**
-     * Number of times entries have been inserted in the cache
-     */
-    protected int _insertCount;
+    protected POJOCacheEntry<K, V>[] _entries;
     
     /*
     /**********************************************************************
@@ -126,7 +59,7 @@ public class BoundedLRUCacheElement<K, V>
      *   cache; in seconds.
      */
     @SuppressWarnings("unchecked")
-    public BoundedLRUCacheElement(KeyConverter<K> keyConverter,
+    public POJOCacheElement(KeyConverter<K> keyConverter,
             int maxEntries, long maxWeight,
             long timeToLiveSecs)
     {
@@ -139,7 +72,7 @@ public class BoundedLRUCacheElement<K, V>
         while (hashAreaSize < maxEntries) {
             hashAreaSize += hashAreaSize;
         }
-        _entries = (CacheEntry<K,V>[]) new CacheEntry<?,?>[hashAreaSize];
+        _entries = (POJOCacheEntry<K,V>[]) new POJOCacheEntry<?,?>[hashAreaSize];
 
         // take into account base mem usage of the cache (crude, but...), including hash area
         _maxContentsWeight = maxWeight - BASE_MEM_USAGE - (hashAreaSize * PlatformConstants.BASE_FIELD_MEMORY_USAGE);
@@ -148,73 +81,35 @@ public class BoundedLRUCacheElement<K, V>
     
     /*
     /**********************************************************************
-    /* Public API, config access, resizing
-    /**********************************************************************
-     */
-
-    /*
-    // More to be added:
-     */
-
-    public int getConfigInvalidatePerGet() {
-        return _configInvalidatePerGet;
-    }
-
-    public void setConfigInvalidatePerGet(int value) {
-        _configInvalidatePerGet = value;
-    }
-    
-    /*
-    /**********************************************************************
     /* Public API, basic access
     /**********************************************************************
      */
 
-    /**
-     * Method for finding entry with specified key from this cache element;
-     * returns null if no such entry exists; otherwise found entry
-     * 
-     * @param currentTime Logical timestamp of point when this operation
-     *   occurs; usually system time, but may be different for tests. Typically
-     *   same for all parts of a single logical transaction (multi-level
-     *   lookup or removal)
-     * @param key Key of the entry to find value for
-     */
-    public CacheEntry<K,V> findEntry(long currentTime, K key)
-    {
+    @Override
+    public POJOCacheEntry<K,V> findEntry(long currentTime, K key) {
         return findEntry(currentTime, key, _keyConverter.keyHash(key));
     }
     
-    /**
-     * Method for finding entry with specified key from this cache element;
-     * returns null if no such entry exists; otherwise found entry
-     * 
-     * @param currentTime Logical timestamp of point when this operation
-     *   occurs; usually system time, but may be different for tests. Typically
-     *   same for all parts of a single logical transaction (multi-level
-     *   lookup or removal)
-     * @param key Key of the entry to find value for
-     * @param keyHash Hash code for the key
-     */
-    public CacheEntry<K,V> findEntry(long currentTime, K key, int keyHash)
+    @Override
+    public POJOCacheEntry<K,V> findEntry(long currentTime, K key, int keyHash)
     {
         int index = _hashIndex(keyHash);
         // First, locate the entry, but keep track of position within hash/collision chain:
-        CacheEntry<K,V> prev = null;
-        CacheEntry<K,V> entry = _entries[index];
+        POJOCacheEntry<K,V> prev = null;
+        POJOCacheEntry<K,V> entry = _entries[index];
         int expireTime = _latestStaleTimestamp(currentTime);
 
         while (entry != null) {
             if ((entry._keyHash == keyHash) && _keyConverter.keysEqual(key, entry.getKey())) {
                 // And if match, verify it is not stale
-                if (entry._insertTime <= expireTime) { // if stale, remove
+                if (entry._insertionTime <= expireTime) { // if stale, remove
                     _removeEntry(entry, index, prev);
                     entry = null;
                 } else { // if not stale, move as LRU
                     // Also: make this the LRU entry (note: _newEntryHead and _oldEntryHead are placeholders)
                     // first, unlink from previous chain
                     prev = entry._lessRecentEntry;
-                    CacheEntry<K,V> next = entry._moreRecentEntry;
+                    POJOCacheEntry<K,V> next = entry._moreRecentEntry;
                     prev._moreRecentEntry = next;
                     next._lessRecentEntry = prev;
                     // then add as new head (wrt LRU)
@@ -226,12 +121,12 @@ public class BoundedLRUCacheElement<K, V>
                     entry._moreRecentEntry = next;
 
                     // and finally, update match count; may be used to decide on promotion/demotion
-                    entry._timesReturned += 1;
+                    ++entry._timesReturned;
                 }
                 break;
             }
             prev = entry;
-            entry = entry._nextCollision;
+            entry = entry._primaryCollision;
         }
 
         // also: if aggressively cleaning up, remove stale entries
@@ -242,38 +137,18 @@ public class BoundedLRUCacheElement<K, V>
         return entry;
     }
 
-    /**
-     * Method for trying to remove entry with specified key. Returns removed
-     * entry, if one found; otherwise returns null
-     * 
-     * @param currentTime Logical timestamp of point when this operation
-     *   occurs; usually system time, but may be different for tests. Typically
-     *   same for all parts of a single logical transaction (multi-level
-     *   lookup or removal)
-     * @param key Key of the entry to find value for
-     */
-    public CacheEntry<K,V> removeEntry(long currentTime, K key)
-    {
+    @Override
+    public POJOCacheEntry<K,V> removeEntry(long currentTime, K key) {
         return removeEntry(currentTime, key, _keyConverter.keyHash(key));
     }
 
-    /**
-     * Method for trying to remove entry with specified key. Returns removed
-     * entry, if one found; otherwise returns null
-     * 
-     * @param currentTime Logical timestamp of point when this operation
-     *   occurs; usually system time, but may be different for tests. Typically
-     *   same for all parts of a single logical transaction (multi-level
-     *   lookup or removal)
-     * @param key Key of the entry to find value for
-     * @param keyHash Hash code for the key
-     */
-    public CacheEntry<K,V> removeEntry(long currentTime, K key, int keyHash)
+    @Override
+    public POJOCacheEntry<K,V> removeEntry(long currentTime, K key, int keyHash)
     {
         int index = (keyHash & (_entries.length - 1));
         // First, locate the entry
-        CacheEntry<K,V> prev = null;
-        CacheEntry<K,V> entry = _entries[index];
+        POJOCacheEntry<K,V> prev = null;
+        POJOCacheEntry<K,V> entry = _entries[index];
         if (entry != null) {
             while (entry != null) {
                 if ((entry._keyHash == keyHash) && _keyConverter.keysEqual(key, entry.getKey())) {
@@ -281,7 +156,7 @@ public class BoundedLRUCacheElement<K, V>
                     break;
                 }
                 prev = entry;
-                entry = entry._nextCollision;
+                entry = entry._primaryCollision;
             }
         }
         // also: if aggressively cleaning up, remove stale entries
@@ -297,51 +172,19 @@ public class BoundedLRUCacheElement<K, V>
         return entry;
     }
 
-    /**
-     * Method for putting specified entry in this cache; if an entry with the key
-     * exists, it will be replaced.
-     * 
-     * @param currentTime Logical timestamp of point when this operation
-     *   occurs; usually system time, but may be different for tests. Typically
-     *   same for all parts of a single logical transaction (multi-level
-     *   lookup or removal)
-     * @param key Key of the entry to insert
-     * @param value Value for the entry to insert
-     * @param weight Combined weights of key and value, not including
-     *    overhead of entry wrapper
-     *    
-     * @return Previous value for the key, if any; usually null but could be non-null
-     *    for race condition cases
-     */
-    public CacheEntry<K,V> putEntry(long currentTime, K key, V value, int weight)
-    {
+    @Override
+    public POJOCacheEntry<K,V> putEntry(long currentTime, K key, V value, int weight) {
         return putEntry(currentTime, key, _keyConverter.keyHash(key), value, weight);
     }
     
-    /**
-     * Method for putting specified entry in this cache; if an entry with the key
-     * exists, it will be replaced.
-     * 
-     * @param currentTime Logical timestamp of point when this operation
-     *   occurs; usually system time, but may be different for tests. Typically
-     *   same for all parts of a single logical transaction (multi-level
-     *   lookup or removal)
-     * @param key Key of the entry to insert
-     * @param keyHash Hash code for the key
-     * @param value Value for the entry to insert
-     * @param weight Combined weights of key and value, not including
-     *    overhead of entry wrapper
-     *    
-     * @return Previous value for the key, if any; usually null but could be non-null
-     *    for race condition cases
-     */
-    public CacheEntry<K,V> putEntry(long currentTime, K key, int keyHash,
+    @Override
+    public POJOCacheEntry<K,V> putEntry(long currentTime, K key, int keyHash,
             V value, int weight)
     {
-        // First things first: let's see if there is an existing entry with key:
+        // First things first: let's see if there is an existing entry with _key:
         int index = (keyHash & (_entries.length - 1));
-        CacheEntry<K,V> prev = null;
-        CacheEntry<K,V> existingEntry = _entries[index];
+        POJOCacheEntry<K,V> prev = null;
+        POJOCacheEntry<K,V> existingEntry = _entries[index];
         if (existingEntry != null) {
             while (existingEntry != null) {
                 if ((existingEntry._keyHash == keyHash) && _keyConverter.keysEqual(key, existingEntry.getKey())) {
@@ -349,15 +192,15 @@ public class BoundedLRUCacheElement<K, V>
                     break;
                 }
                 prev = existingEntry;
-                existingEntry = existingEntry._nextCollision;
+                existingEntry = existingEntry._primaryCollision;
             }
         }
         // Either way, need to add the new entry next, as newest and MRU
-        CacheEntry<K,V> newEntry = new CacheEntry<K,V>(key, keyHash, value, _timeToTimestamp(currentTime), weight,
+        POJOCacheEntry<K,V> newEntry = new POJOCacheEntry<K,V>(key, keyHash, value, _timeToTimestamp(currentTime), weight,
                 _entries[index]);
         _entries[index] = newEntry;
         // ok; first insertion-order linked list:
-        CacheEntry<K,V> next = _newEntryHead;
+        POJOCacheEntry<K,V> next = _newEntryHead;
         prev = next._olderEntry;
         next._olderEntry = newEntry;
         newEntry._newerEntry = next;
@@ -385,7 +228,7 @@ public class BoundedLRUCacheElement<K, V>
         // And if we are still above limit, remove LRU entries
         count = 0;
         while ((_currentEntries > _maxEntries) || (_currentContentsWeight > _maxContentsWeight)) {
-            CacheEntry<K,V> lru = _oldEntryHead._moreRecentEntry;
+            POJOCacheEntry<K,V> lru = _oldEntryHead._moreRecentEntry;
             if (lru == _newEntryHead) { // should never occur...
                 throw new IllegalStateException("Flushed "+count+" entries, cache empty, still too many entries ("+_currentEntries
                         +") or too much weight ("+_currentContentsWeight+")");
@@ -396,9 +239,7 @@ public class BoundedLRUCacheElement<K, V>
         return existingEntry;
     }
     
-    /**
-     * Method for clearing up the cache by removing all entries.
-     */
+    @Override
     public void removeAll()
     {
         // Easy enough to drop all:
@@ -411,72 +252,11 @@ public class BoundedLRUCacheElement<K, V>
     
     /*
     /**********************************************************************
-    /* Public API, stats
-    /**********************************************************************
-     */
-
-    public final int size() {
-        return _currentEntries;
-    }
-
-    /**
-     * Returns crude estimated memory usage for entries cache contains, not
-     * including overhead of cache itself (which is small); slightly
-     * lower than what {@link #weight} would return.
-     */
-    public final long contentsWeight() { return _currentContentsWeight; }
-
-    /**
-     * Returns crude estimated memory usage for the cache as whole, including
-     * contents
-     */
-    public final long weight() {
-        return BASE_MEM_USAGE + _currentContentsWeight
-            + (_entries.length * PlatformConstants.BASE_FIELD_MEMORY_USAGE);
-    }
-    
-    public CacheStats getStats() {
-        return new CacheStats(_hitCount, _missCount, _insertCount,
-                size(), weight(),
-                _maxEntries, _maxContentsWeight);
-    }
-
-    public void clearStats()
-    {
-        _hitCount = 0;
-        _missCount = 0;
-        _insertCount = 0;
-    }
-
-    /**
-     * Method that can be used to decay existing statistics, to keep
-     * smoothed-out average of hit/miss ratios over time.
-     */
-    public void decayStats(double ratio)
-    {
-        _hitCount = (int) (_hitCount * ratio);
-        _missCount = (int) (_missCount * ratio);
-        _insertCount = (int) (_insertCount * ratio);
-    }
-    
-    /*
-    /**********************************************************************
     /* Public methods, other
     /**********************************************************************
      */
-
-    /**
-     * Method for invalidating all stale entries this cache has (if any)
-     * 
-     * @param currentTimeMsecs Logical timestamp when this operation occurs
-     * 
-     * @return Number of stale entries invalidated
-     */
-    public int invalidateStale(long currentTimeMsecs)
-    {
-        return invalidateStale(currentTimeMsecs, Integer.MAX_VALUE);
-    }
     
+    @Override
     public int invalidateStale(long currentTimeMsecs, int maxToInvalidate)
     {
         int count = 0;
@@ -488,6 +268,12 @@ public class BoundedLRUCacheElement<K, V>
         return count;
     }
 
+    @Override
+    public final long weight() {
+        return BASE_MEM_USAGE + _currentContentsWeight
+            + (_entries.length * PlatformConstants.BASE_FIELD_MEMORY_USAGE);
+    }
+    
     /*
     /**********************************************************************
     /* Diagnostic methods
@@ -508,10 +294,10 @@ public class BoundedLRUCacheElement<K, V>
         int actualCount = 0;
 
         // First: calculate real entry count from hash table and spill-over links
-        for (CacheEntry<K,V> entry : _entries) {
+        for (POJOCacheEntry<K,V> entry : _entries) {
             while (entry != null) {
                 ++actualCount;
-                entry = entry._nextCollision;
+                entry = entry._primaryCollision;
             }
         }
         // and compare it to assumed number of entries
@@ -526,42 +312,42 @@ public class BoundedLRUCacheElement<K, V>
     /**********************************************************************
      */
     
-    protected CacheEntry<K,V> oldestEntry(long currentTime)
+    protected POJOCacheEntry<K,V> oldestEntry(long currentTime)
     {
         // first, ensure we have dumped all stale entries, then return what's left if anything
         while (_invalidateOldestIfStale(_latestStaleTimestamp(currentTime))) { }
-        CacheEntry<K,V> oldest = _oldEntryHead._newerEntry;
+        POJOCacheEntry<K,V> oldest = _oldEntryHead._newerEntry;
         return (oldest != _newEntryHead) ? oldest : null;
     }
 
-    protected CacheEntry<K,V> newestEntry(long currentTime)
+    protected POJOCacheEntry<K,V> newestEntry(long currentTime)
     {
         // first, ensure we have dumped all stale entries, then return what's left if anything
         while (_invalidateOldestIfStale(_latestStaleTimestamp(currentTime))) { }
-        CacheEntry<K,V> newest = _newEntryHead._olderEntry;
+        POJOCacheEntry<K,V> newest = _newEntryHead._olderEntry;
         return (newest != _oldEntryHead) ? newest : null;
     }
 
-    protected CacheEntry<K,V> leastRecentEntry(long currentTime)
+    protected POJOCacheEntry<K,V> leastRecentEntry(long currentTime)
     {
         // first, ensure we have dumped all stale entries, then return what's left if anything
         while (_invalidateOldestIfStale(_latestStaleTimestamp(currentTime))) { }
-        CacheEntry<K,V> leastRecent = _oldEntryHead._moreRecentEntry;
+        POJOCacheEntry<K,V> leastRecent = _oldEntryHead._moreRecentEntry;
         return (leastRecent != _newEntryHead) ? leastRecent : null;
     }
 
-    protected CacheEntry<K,V> mostRecentEntry(long currentTime)
+    protected POJOCacheEntry<K,V> mostRecentEntry(long currentTime)
     {
         // first, ensure we have dumped all stale entries, then return what's left if anything
         while (_invalidateOldestIfStale(_latestStaleTimestamp(currentTime))) { }
-        CacheEntry<K,V> mostRecent = _newEntryHead._lessRecentEntry;
+        POJOCacheEntry<K,V> mostRecent = _newEntryHead._lessRecentEntry;
         return (mostRecent != _oldEntryHead) ? mostRecent : null;
     }
 
     protected List<K> keysFromOldestToNewest()
     {
         ArrayList<K> keys = new ArrayList<K>();
-        for (CacheEntry<K,V> entry = _oldEntryHead._newerEntry; entry != _newEntryHead; entry = entry._newerEntry) {
+        for (POJOCacheEntry<K,V> entry = _oldEntryHead._newerEntry; entry != _newEntryHead; entry = entry._newerEntry) {
             keys.add(entry.getKey());
         }
         return keys;
@@ -570,7 +356,7 @@ public class BoundedLRUCacheElement<K, V>
     protected List<K> keysFromLeastToMostRecent()
     {
         ArrayList<K> keys = new ArrayList<K>();
-        for (CacheEntry<K,V> entry = _oldEntryHead._moreRecentEntry; entry != _newEntryHead; entry = entry._moreRecentEntry) {
+        for (POJOCacheEntry<K,V> entry = _oldEntryHead._moreRecentEntry; entry != _newEntryHead; entry = entry._moreRecentEntry) {
             keys.add(entry.getKey());
         }
         return keys;
@@ -619,12 +405,12 @@ public class BoundedLRUCacheElement<K, V>
      */
     protected boolean _invalidateOldestIfStale(int latestStaleTime)
     {
-        CacheEntry<K,V> oldest = _oldEntryHead._newerEntry;
+        POJOCacheEntry<K,V> oldest = _oldEntryHead._newerEntry;
         if (oldest != _newEntryHead) {
             /* ok now: timestamps we use are relative (due to truncation), so
              * we MUST compare by subtraction, compare difference
              */
-            int diff = oldest._insertTime - latestStaleTime;
+            int diff = oldest._insertionTime - latestStaleTime;
             if (diff <= 0) { // created at or before expiration time (latest timestamp that is stale)
                 _removeEntry(oldest);
                 return true;
@@ -635,7 +421,7 @@ public class BoundedLRUCacheElement<K, V>
 
     protected boolean _invalidateOldest()
     {
-        CacheEntry<K,V> oldest = _oldEntryHead._newerEntry;
+        POJOCacheEntry<K,V> oldest = _oldEntryHead._newerEntry;
         if (oldest != _newEntryHead) {
             _removeEntry(oldest);
             return true;
@@ -643,47 +429,47 @@ public class BoundedLRUCacheElement<K, V>
         return false;
     }
     
-    protected void _removeEntry(CacheEntry<K,V> entry)
+    protected void _removeEntry(POJOCacheEntry<K,V> entry)
     {
         // Ok, need to locate entry in hash...
         int index = _hashIndex(entry._keyHash);
-        CacheEntry<K,V> curr = _entries[index];
-        CacheEntry<K,V> prev = null;
+        POJOCacheEntry<K,V> curr = _entries[index];
+        POJOCacheEntry<K,V> prev = null;
         while (curr != null) {
             if (curr == entry) {
                 _removeEntry(entry, index, prev);
                 return;
             }
             prev = curr;
-            curr = curr._nextCollision;
+            curr = curr._primaryCollision;
         }
         // should never occur, so:
-        throw new IllegalStateException("Internal data error: could not find entry (index "+index+"/"+_entries.length+"), key "+entry.getKey());
+        throw new IllegalStateException("Internal data error: could not find entry (index "+index+"/"+_entries.length+"), _key "+entry.getKey());
     }
     
-    protected void _removeEntry(CacheEntry<K,V> entry, int hashIndex, CacheEntry<K,V> prevInHash)
+    protected void _removeEntry(POJOCacheEntry<K,V> entry, int hashIndex, POJOCacheEntry<K,V> prevInHash)
     {
         // First, update counts
         --_currentEntries;
         _currentContentsWeight -= entry._weight;
 
         // Unlink from hash area
-        CacheEntry<K,V> next = entry._nextCollision;
+        POJOCacheEntry<K,V> next = entry._primaryCollision;
         if (prevInHash == null) {
             _entries[hashIndex] = next;
         } else {
-            prevInHash._nextCollision = next;
+            prevInHash._primaryCollision = next;
         }
         // and from linked lists:
         entry.unlink();
 
-checkSanity();
+//checkSanity();
     }
 
     private void _resetOldestAndNewest()
     {
-        _newEntryHead = new CacheEntry<K,V>();
-        _oldEntryHead = new CacheEntry<K,V>();
+        _newEntryHead = new POJOCacheEntry<K,V>();
+        _oldEntryHead = new POJOCacheEntry<K,V>();
         _newEntryHead._olderEntry = _oldEntryHead;
         _newEntryHead._lessRecentEntry = _oldEntryHead;
         _oldEntryHead._newerEntry = _newEntryHead;

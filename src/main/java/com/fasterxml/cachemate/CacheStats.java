@@ -1,5 +1,9 @@
 package com.fasterxml.cachemate;
 
+/**
+ * Simple container class for statistics regarding a single
+ * {@link CacheElement}
+ */
 public class CacheStats
 {
     protected final int _hits;

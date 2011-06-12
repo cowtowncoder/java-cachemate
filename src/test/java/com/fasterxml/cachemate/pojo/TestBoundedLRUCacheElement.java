@@ -1,13 +1,15 @@
-package com.fasterxml.cachemate;
+package com.fasterxml.cachemate.pojo;
 
 import java.util.*;
 
+import com.fasterxml.cachemate.CacheEntry;
 import com.fasterxml.cachemate.converters.StringKeyConverter;
+import com.fasterxml.cachemate.pojo.POJOCacheElement;
 
 import junit.framework.TestCase;
 
 /**
- * Unit tests verifying correct functioning of {@link BoundedLRUCacheElement}
+ * Unit tests verifying correct functioning of {@link POJOCacheElement}
  * as stand-alone cache component.
  */
 public class TestBoundedLRUCacheElement extends TestCase
@@ -18,7 +20,7 @@ public class TestBoundedLRUCacheElement extends TestCase
     public void testInitialState() throws Exception
     {
         // Use Strings as keys, values
-        BoundedLRUCacheElement<String,String> cache = new BoundedLRUCacheElement<String,String>(StringKeyConverter.instance,
+        POJOCacheElement<String,String> cache = new POJOCacheElement<String,String>(StringKeyConverter.instance,
                 64, 64 * 1024, /* ttl */ 4);
         // base size; no entries, no content memory usage
         assertEquals(0, cache.size());
@@ -45,7 +47,7 @@ public class TestBoundedLRUCacheElement extends TestCase
      */
     public void testSimpleInserts() throws Exception
     {
-        BoundedLRUCacheElement<String,String> cache = new BoundedLRUCacheElement<String,String>(StringKeyConverter.instance,
+        POJOCacheElement<String,String> cache = new POJOCacheElement<String,String>(StringKeyConverter.instance,
                 64, 64 * 1024, /* ttl */ 4);
         long time = 3000L; // at "3 seconds"
         assertNull(cache.putEntry(time, "abc", "def", 3));
@@ -85,7 +87,7 @@ public class TestBoundedLRUCacheElement extends TestCase
     public void testInsertWithOverflow() throws Exception
     {
         // no time-based expiration (1000 seconds)
-        BoundedLRUCacheElement<String,String> cache = new BoundedLRUCacheElement<String,String>(StringKeyConverter.instance,
+        POJOCacheElement<String,String> cache = new POJOCacheElement<String,String>(StringKeyConverter.instance,
                 3, 3 * 1024, 1000L);
         // invalidate one entry per get-operation
         cache.setConfigInvalidatePerGet(1);
@@ -143,7 +145,7 @@ public class TestBoundedLRUCacheElement extends TestCase
     
     public void testSimpleAccess() throws Exception
     {
-        BoundedLRUCacheElement<String,String> cache = new BoundedLRUCacheElement<String,String>(StringKeyConverter.instance,
+        POJOCacheElement<String,String> cache = new POJOCacheElement<String,String>(StringKeyConverter.instance,
                 64, 64 * 1024, 4); // 4 == ttl in seconds
         long time = 3000L; // at "3 seconds"
         assertNull(cache.putEntry(time, "abc", "def", 3));
@@ -187,7 +189,7 @@ public class TestBoundedLRUCacheElement extends TestCase
 
     public void testSimpleStale() throws Exception
     {
-        BoundedLRUCacheElement<String,String> cache = new BoundedLRUCacheElement<String,String>(StringKeyConverter.instance,
+        POJOCacheElement<String,String> cache = new POJOCacheElement<String,String>(StringKeyConverter.instance,
                 64, 64 * 1024, 4); // TTL 4 seconds
         assertNull(cache.putEntry(3000L, "a", "1", 5)); // stale at about 7 seconds
         assertNull(cache.putEntry(4000L, "b", "2", 3));
@@ -227,7 +229,7 @@ public class TestBoundedLRUCacheElement extends TestCase
 
     public void testSimpleRemoval() throws Exception
     {
-        BoundedLRUCacheElement<String,String> cache = new BoundedLRUCacheElement<String,String>(StringKeyConverter.instance,
+        POJOCacheElement<String,String> cache = new POJOCacheElement<String,String>(StringKeyConverter.instance,
                 64, 64 * 1024, 4); // 4 == ttl in seconds
         long time = 3000L; // at "3 seconds"
         assertNull(cache.putEntry(time, "a", "1", 1));
@@ -277,12 +279,12 @@ public class TestBoundedLRUCacheElement extends TestCase
 
     /**
      * And then let's test a longer sequence of operations, combination of inserts, removals
-     * and finds with bounded key set (100 keys).
+     * and finds with bounded _key set (100 keys).
      */
     public void testRandomOperations()
     {
         LinkedHashMap<String,Integer> map = new LinkedHashMap<String,Integer>(100, 0.8f, true);
-        BoundedLRUCacheElement<String,Integer> cache = new BoundedLRUCacheElement<String,Integer>(StringKeyConverter.instance,
+        POJOCacheElement<String,Integer> cache = new POJOCacheElement<String,Integer>(StringKeyConverter.instance,
                 500, 64 * 1024, 4);
 
         Random rnd = new Random(123);
