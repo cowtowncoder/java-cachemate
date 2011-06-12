@@ -48,16 +48,18 @@ public class TwoKeyPOJOCacheEntry<K1,K2,V>
      */
     public TwoKeyPOJOCacheEntry() {
         this(null, 0, null, 0,
-                null, 0, 0, null);
+                null, 0, 0, null, null);
     }
     
     public TwoKeyPOJOCacheEntry(K1 key, int keyHash, K2 key2, int keyHash2,
             V value, int insertTime, int weight,
-            TwoKeyPOJOCacheEntry<K1,K2,V> nextCollision)
+            TwoKeyPOJOCacheEntry<K1,K2,V> nextPrimaryCollision,
+            TwoKeyPOJOCacheEntry<K1,K2,V> nextSecondaryCollision)
     {
-        super(key, keyHash, value, insertTime, weight, nextCollision);
+        super(key, keyHash, value, insertTime, weight, nextPrimaryCollision);
         _key2 = key2;
         _keyHash2 = keyHash;
+        _secondaryCollision = nextSecondaryCollision;
     }
     
     /*

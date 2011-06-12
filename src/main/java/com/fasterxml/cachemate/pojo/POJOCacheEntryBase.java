@@ -155,6 +155,7 @@ abstract class POJOCacheEntryBase<K, V, SUBTYPE extends POJOCacheEntryBase<K, V,
         return (diff < 0L) ? 0L : diff;
     }
 
+    
     /*
     /**********************************************************************
     /* Standard method overrides
@@ -172,6 +173,11 @@ abstract class POJOCacheEntryBase<K, V, SUBTYPE extends POJOCacheEntryBase<K, V,
     /* Package access
     /**********************************************************************
      */
+
+    protected final SUBTYPE newerEntry() { return _newerEntry; }
+    protected final SUBTYPE olderEntry() { return _olderEntry; }
+    protected final SUBTYPE moreRecentEntry() { return _moreRecentEntry; }
+    protected final SUBTYPE lessRecentEntry() { return _lessRecentEntry; }
     
     protected void unlink()
     {
