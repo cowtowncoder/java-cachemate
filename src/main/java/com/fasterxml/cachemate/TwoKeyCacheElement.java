@@ -34,7 +34,10 @@ public interface TwoKeyCacheElement<K1, K2, V>
     
     /*
     /**********************************************************************
-    /* Addditional methods using secondary key
+    /* Addditional methods using secondary key.
+    /* Note that no additional remove methods are exposed since secondary
+    /* keys are not guaranteed to be unique; to remove, need to combine
+    /* lookup (to get primary key) with removal
     /**********************************************************************
      */
 
@@ -45,7 +48,4 @@ public interface TwoKeyCacheElement<K1, K2, V>
     
     public TwoKeyCacheEntry<K1, K2, V> findEntryBySecondary(long currentTime, K2 secondaryKey);
     public TwoKeyCacheEntry<K1, K2, V> findEntryBySecondary(long currentTime, K2 secondaryKey, int keyHash);
-
-    public TwoKeyCacheEntry<K1, K2, V> removeEntryBySecondary(long currentTime, K2 secondaryKey);
-    public TwoKeyCacheEntry<K1, K2, V> removeEntryBySecondary(long currentTime, K2 secondaryKey, int secondaryKeyHash);
 }

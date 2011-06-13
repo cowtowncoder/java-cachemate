@@ -13,6 +13,13 @@ import com.fasterxml.cachemate.*;
 abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
     implements CacheElement<K, V>
 {
+    /**
+     * This base class has this many fields; count is
+     * used for estimating rough in-memory size
+     * for the cache as total.
+     */
+    protected final static int BASE_FIELD_COUNT = 13;
+    
     /*
     /**********************************************************************
     /* Configuration, converters
@@ -476,28 +483,28 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
         return false;
     }
 
-    protected final E _removeByPrimary(long currentTime, K key, int keyHash)
-    {
-        int index = (keyHash & (_entries.length - 1));
-        // First, locate the entry
-        E prev = null;
-        E entry = _entries[index];
-        if (entry != null) {
-            while (entry != null) {
-                if ((entry._keyHash == keyHash) && _keyConverter.keysEqual(key, entry.getKey())) {
-                    _removeEntry(entry, index, prev);
-                    return entry;
-                }
-                prev = entry;
-                entry = entry._primaryCollision;
-            }
-        }
-        return null;
-    }
+    protected abstract E _removeByPrimary(long currentTime, K key, int keyHash);
     
     protected abstract void _removeEntry(E entry);
 
-    protected abstract void _removeEntry(E entry, int hashIndex, E prevInHash);
+    protected void _removeEntry(E entry, int primaryHashIndex, E prevInCollision)
+    {
+        // First, update counts
+        --_currentEntries;
+        _currentContentsWeight -= entry._weight;
+
+        // Unlink from hash area
+        E next = entry._primaryCollision;
+        if (prevInCollision == null) {
+            _entries[primaryHashIndex] = next;
+        } else {
+            prevInCollision._primaryCollision = next;
+        }
+        // and from linked lists:
+        entry.unlink();
+
+//checkSanity();
+    }
     
     protected final void _resetOldestAndNewest()
     {
@@ -511,7 +518,7 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
 
     protected abstract E _createDummyEntry();
 
-    protected abstract E _createEntry(K key, int keyHash, V value, int timestamp, int weight, E nextCollision);
+    protected abstract E _createEntry(K key, int keyHash, V value, int timestamp, int weight, E nextPrimaryCollision);
 
     protected final void _linkNewEntry(long currentTime, E newEntry, int weight)
     {

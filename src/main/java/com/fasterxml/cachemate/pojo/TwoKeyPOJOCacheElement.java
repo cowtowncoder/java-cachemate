@@ -12,10 +12,10 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
      * We have about this many fields; just used for estimating rough in-memory size
      * for the cache as total.
      */
-    private final static int FIELD_COUNT = 14;
-    
+    protected final static int IMPL_FIELD_COUNT = BASE_FIELD_COUNT + 3;
+
     private final static int BASE_MEM_USAGE = PlatformConstants.BASE_OBJECT_MEMORY_USAGE 
-        + (FIELD_COUNT * PlatformConstants.BASE_FIELD_MEMORY_USAGE);
+        + (IMPL_FIELD_COUNT * PlatformConstants.BASE_FIELD_MEMORY_USAGE);
 
     /*
     /**********************************************************************
@@ -95,6 +95,7 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
     /**********************************************************************
      */
 
+    @Override
     public TwoKeyPOJOCacheEntry<K1, K2, V> putEntry(long currentTime, K1 primaryKey, K2 secondaryKey, V value, int weight)
     {
         int primHash = _keyConverter.keyHash(primaryKey);
@@ -102,6 +103,10 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
         return putEntry(currentTime, primaryKey, primHash, secondaryKey, secHash, value, weight);
     }
 
+    /* Addition of entries here is quite similar to the single-key puts,
+     * as most commonal parts are refactored out.
+     */
+    @Override
     public TwoKeyPOJOCacheEntry<K1, K2, V> putEntry(long currentTime, K1 primaryKey, int primaryKeyHash,
             K2 secondaryKey, int secondaryKeyHash,
             V value, int weight)
@@ -119,7 +124,7 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
             nextSecondary = null;
         } else {
             secondaryIndex = _secondaryHashIndex(secondaryKeyHash);
-            nextSecondary = _entries[primaryIndex];        
+            nextSecondary = _secondaryEntries[secondaryIndex];        
         }
         TwoKeyPOJOCacheEntry<K1, K2, V> newEntry = new TwoKeyPOJOCacheEntry<K1, K2, V>(
                 primaryKey, primaryKeyHash, secondaryKey, secondaryKeyHash,
@@ -132,23 +137,65 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
         _linkNewEntry(currentTime, newEntry, weight);
         return existingEntry;
     }
-    
+
+    @Override
     public TwoKeyPOJOCacheEntry<K1, K2, V> findEntryBySecondary(long currentTime, K2 secondaryKey)
     {
-        return null;
-    }
-    public TwoKeyPOJOCacheEntry<K1, K2, V> findEntryBySecondary(long currentTime, K2 secondaryKey, int keyHash)
-    {
-        return null;
+        if (secondaryKey == null) {
+            return null;
+        }
+        return findEntryBySecondary(currentTime, secondaryKey,
+            _secondaryKeyConverter.keyHash(secondaryKey));
     }
 
-    public TwoKeyPOJOCacheEntry<K1, K2, V> removeEntryBySecondary(long currentTime, K2 secondaryKey)
+    @Override
+    public TwoKeyPOJOCacheEntry<K1, K2, V> findEntryBySecondary(long currentTime, K2 secondaryKey, int secondaryHash)
     {
-        return null;
-    }
-    public TwoKeyPOJOCacheEntry<K1, K2, V> removeEntryBySecondary(long currentTime, K2 secondaryKey, int secondaryKeyHash)
-    {
-        return null;
+        if (secondaryKey == null) {
+            return null;
+        }
+        int index = _secondaryHashIndex(secondaryHash);
+        // First, locate the entry, but keep track of position within hash/collision chain:
+        TwoKeyPOJOCacheEntry<K1, K2, V> prev = null;
+        TwoKeyPOJOCacheEntry<K1, K2, V> entry = _secondaryEntries[index];
+        int expireTime = _latestStaleTimestamp(currentTime);
+
+        while (entry != null) {
+            if ((entry._keyHash2 == secondaryHash) && _secondaryKeyConverter.keysEqual(secondaryKey, entry.getSecondaryKey())) {
+                // And if match, verify it is not stale
+                if (entry._insertionTime <= expireTime) { // if stale, remove
+                    _removeEntry(entry);
+                    entry = null;
+                } else { // if not stale, move as LRU
+                    // Also: make this the LRU entry (note: _newEntryHead and _oldEntryHead are placeholders)
+                    // first, unlink from previous chain
+                    prev = entry._lessRecentEntry;
+                    TwoKeyPOJOCacheEntry<K1, K2, V> next = entry._moreRecentEntry;
+                    prev._moreRecentEntry = next;
+                    next._lessRecentEntry = prev;
+                    // then add as new head (wrt LRU)
+                    next = _newEntryHead;
+                    prev = _newEntryHead._lessRecentEntry;
+                    prev._moreRecentEntry = entry;
+                    entry._lessRecentEntry = prev;
+                    next._lessRecentEntry = entry;
+                    entry._moreRecentEntry = next;
+
+                    // and finally, update match count; may be used to decide on promotion/demotion
+                    ++entry._timesReturned;
+                }
+                break;
+            }
+            prev = entry;
+            entry = entry._secondaryCollision;
+        }
+
+        // also: if aggressively cleaning up, remove stale entries
+        int count = _configInvalidatePerGet;
+        while (count > 0 && _invalidateOldestIfStale(expireTime)) {
+            --count;
+        }
+        return entry;
     }
     
     /*
@@ -170,42 +217,132 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
 
     /*
     /**********************************************************************
-    /* Internal methods
+    /* Overridden/implemented base class methods
     /**********************************************************************
      */
 
     @Override
-    protected void _removeEntry(TwoKeyPOJOCacheEntry<K1,K2,V> entry)
+    protected final TwoKeyPOJOCacheEntry<K1,K2,V> _removeByPrimary(long currentTime, K1 key, int keyHash)
     {
-        // Ok, need to locate entry in hash...
-        int index = _primaryHashIndex(entry._keyHash);
-        TwoKeyPOJOCacheEntry<K1,K2,V> curr = _entries[index];
+        int index = (keyHash & (_entries.length - 1));
+        // First, locate the entry
         TwoKeyPOJOCacheEntry<K1,K2,V> prev = null;
-        while (curr != null) {
-            if (curr == entry) {
-                _removeEntry(entry, index, prev);
-                return;
+        TwoKeyPOJOCacheEntry<K1,K2,V> entry = _entries[index];
+        if (entry != null) {
+            while (entry != null) {
+                if ((entry._keyHash == keyHash) && _keyConverter.keysEqual(key, entry.getKey())) {
+                    _removeEntry(entry, index, prev);
+                    return entry;
+                }
+                prev = entry;
+                entry = entry._primaryCollision;
             }
-            prev = curr;
-            curr = curr._primaryCollision;
         }
-        // should never occur, so:
-        throw new IllegalStateException("Internal data error: could not find entry (index "+index+"/"+_entries.length+"), _key "+entry.getKey());
+        return null;
+    }
+
+    /* Since may have secondary key, this method needs bit more work compared
+     * to the base class variant
+     */
+    @Override
+    protected void _removeEntry(TwoKeyPOJOCacheEntry<K1,K2,V> entry, int primaryHashIndex,
+            TwoKeyPOJOCacheEntry<K1,K2,V> prevInPrimary)
+    {
+        // let's also see if there's secondary key to remove:
+        int secondaryHashIndex;
+        TwoKeyPOJOCacheEntry<K1,K2,V> prevSecondary = null;
+        if (entry.hasSecondaryKey()) {
+            secondaryHashIndex = _secondaryHashIndex(entry._keyHash2);
+            TwoKeyPOJOCacheEntry<K1,K2,V> currSecondary = _secondaryEntries[secondaryHashIndex];
+            while (true) {
+                if (currSecondary == null) {
+                    // should never occur, so:
+                    throw new IllegalStateException("Internal data error: could not find entry with secondary key "
+                            +entry.getSecondaryKey()+", index "+secondaryHashIndex+"/"+_entries.length);
+                }
+                if (currSecondary == entry) {
+                    break;
+                }
+                prevSecondary = currSecondary;
+                currSecondary = currSecondary._primaryCollision;
+            }
+        } else {
+            secondaryHashIndex = -1;
+        }
+        _removeEntry(entry, primaryHashIndex, prevInPrimary, secondaryHashIndex, prevSecondary);
     }
     
-    protected void _removeEntry(TwoKeyPOJOCacheEntry<K1,K2,V> entry, int hashIndex, TwoKeyPOJOCacheEntry<K1,K2,V> prevInHash)
+    @Override
+    protected void _removeEntry(TwoKeyPOJOCacheEntry<K1,K2,V> entry)
+    {
+        // Ok, need to locate entry in primary hash first
+        int primaryIndex = _primaryHashIndex(entry._keyHash);
+        TwoKeyPOJOCacheEntry<K1,K2,V> curr = _entries[primaryIndex];
+        TwoKeyPOJOCacheEntry<K1,K2,V> prevPrimary = null;
+
+        while (true) {
+            if (curr == null) {
+                // should never occur, so:
+                throw new IllegalStateException("Internal data error: could not find entry (index "+primaryIndex+"/"+_entries.length+"), with primary key "+entry.getKey());
+            }
+            if (curr == entry) {
+                break;
+            }
+            prevPrimary = curr;
+            curr = curr._primaryCollision;
+        }
+        // and possibly also need to remove from secondary hash table:
+        TwoKeyPOJOCacheEntry<K1,K2,V> prevSecondary = null;
+        int secondaryIndex;
+
+        if (entry.hasSecondaryKey()) {
+            secondaryIndex = _secondaryHashIndex(entry._keyHash2);
+            curr = _secondaryEntries[secondaryIndex];
+            while (true) {
+                if (curr == null) {
+                    // should never occur, so:
+                    throw new IllegalStateException("Internal data error: could not find entry (index "+secondaryIndex+"/"+_entries.length
+                            +"), with secondary key "+entry.getSecondaryKey());
+                }
+                if (curr == entry) {
+                    break;
+                }
+                prevSecondary = curr;
+                curr = curr._primaryCollision;
+            }
+        } else {
+            secondaryIndex = -1;
+        }
+        _removeEntry(entry, primaryIndex, prevPrimary, secondaryIndex, prevSecondary);
+        return;
+    }
+    
+    protected void _removeEntry(TwoKeyPOJOCacheEntry<K1,K2,V> entry,
+            int primaryHashIndex, TwoKeyPOJOCacheEntry<K1,K2,V> prevInPrimary,
+            int secondaryHashIndex, TwoKeyPOJOCacheEntry<K1,K2,V> prevInSecondary)
     {
         // First, update counts
         --_currentEntries;
         _currentContentsWeight -= entry._weight;
 
-        // Unlink from hash area
+        // Unlink from hash area; first primary
         TwoKeyPOJOCacheEntry<K1,K2,V> next = entry._primaryCollision;
-        if (prevInHash == null) {
-            _entries[hashIndex] = next;
+        if (prevInPrimary == null) {
+            _entries[primaryHashIndex] = next;
         } else {
-            prevInHash._primaryCollision = next;
+            prevInPrimary._primaryCollision = next;
         }
+
+        // then secondary
+        if (secondaryHashIndex >= 0) {
+            next = entry._secondaryCollision;
+            if (prevInSecondary == null) {
+                _secondaryEntries[secondaryHashIndex] = next;
+            } else {
+                prevInSecondary._secondaryCollision = next;
+            }
+        }
+        
         // and from linked lists:
         entry.unlink();
 

@@ -27,13 +27,14 @@ public class POJOCacheElement<K, V>
     implements CacheElement<K, V>
 {
     /**
-     * We have about this many fields; just used for estimating rough in-memory size
+     * This base class has this many fields; count is
+     * used for estimating rough in-memory size
      * for the cache as total.
      */
-    private final static int FIELD_COUNT = 14;
-    
+    protected final static int IMPL_FIELD_COUNT = BASE_FIELD_COUNT + 1;
+
     private final static int BASE_MEM_USAGE = PlatformConstants.BASE_OBJECT_MEMORY_USAGE 
-        + (FIELD_COUNT * PlatformConstants.BASE_FIELD_MEMORY_USAGE);
+        + (IMPL_FIELD_COUNT * PlatformConstants.BASE_FIELD_MEMORY_USAGE);
 
     // // // Actual entries
 
@@ -85,10 +86,21 @@ public class POJOCacheElement<K, V>
 
     /*
     /**********************************************************************
-    /* Internal methods
+    /* Overridden/implemented base class methods
     /**********************************************************************
      */
 
+    @Override
+    protected POJOCacheEntry<K,V> _createDummyEntry() {
+        return new POJOCacheEntry<K,V>();
+    }
+
+    @Override
+    protected POJOCacheEntry<K,V> _createEntry(K key, int keyHash, V value, int timestamp, int weight,
+            POJOCacheEntry<K,V> nextCollision) {
+        return new POJOCacheEntry<K,V>(key, keyHash, value, timestamp, weight, nextCollision);
+    }
+    
     @Override
     protected void _removeEntry(POJOCacheEntry<K,V> entry)
     {
@@ -108,35 +120,23 @@ public class POJOCacheElement<K, V>
         throw new IllegalStateException("Internal data error: could not find entry (index "+index+"/"+_entries.length+"), _key "+entry.getKey());
     }
 
-    @Override
-    protected void _removeEntry(POJOCacheEntry<K,V> entry, int hashIndex, POJOCacheEntry<K,V> prevInHash)
+    protected final POJOCacheEntry<K,V> _removeByPrimary(long currentTime, K key, int keyHash)
     {
-        // First, update counts
-        --_currentEntries;
-        _currentContentsWeight -= entry._weight;
-
-        // Unlink from hash area
-        POJOCacheEntry<K,V> next = entry._primaryCollision;
-        if (prevInHash == null) {
-            _entries[hashIndex] = next;
-        } else {
-            prevInHash._primaryCollision = next;
+        int index = (keyHash & (_entries.length - 1));
+        // First, locate the entry
+        POJOCacheEntry<K,V> prev = null;
+        POJOCacheEntry<K,V> entry = _entries[index];
+        if (entry != null) {
+            while (entry != null) {
+                if ((entry._keyHash == keyHash) && _keyConverter.keysEqual(key, entry.getKey())) {
+                    _removeEntry(entry, index, prev);
+                    return entry;
+                }
+                prev = entry;
+                entry = entry._primaryCollision;
+            }
         }
-        // and from linked lists:
-        entry.unlink();
-
-//checkSanity();
-    }
-
-    @Override
-    protected POJOCacheEntry<K,V> _createDummyEntry() {
-        return new POJOCacheEntry<K,V>();
-    }
-
-    @Override
-    protected POJOCacheEntry<K,V> _createEntry(K key, int keyHash, V value, int timestamp, int weight,
-            POJOCacheEntry<K,V> nextCollision) {
-        return new POJOCacheEntry<K,V>(key, keyHash, value, timestamp, weight, nextCollision);
+        return null;
     }
     
     /*

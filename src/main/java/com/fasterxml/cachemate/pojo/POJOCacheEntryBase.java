@@ -179,6 +179,10 @@ abstract class POJOCacheEntryBase<K, V, SUBTYPE extends POJOCacheEntryBase<K, V,
     protected final SUBTYPE moreRecentEntry() { return _moreRecentEntry; }
     protected final SUBTYPE lessRecentEntry() { return _lessRecentEntry; }
     
+    /**
+     * Method used to unlink entries from LRU/expiration chains; but NOT
+     * from collision chains.
+     */
     protected void unlink()
     {
         // first unlink from oldest/newest linkage

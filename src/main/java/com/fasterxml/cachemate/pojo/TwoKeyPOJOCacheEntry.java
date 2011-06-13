@@ -58,7 +58,7 @@ public class TwoKeyPOJOCacheEntry<K1,K2,V>
     {
         super(key, keyHash, value, insertTime, weight, nextPrimaryCollision);
         _key2 = key2;
-        _keyHash2 = keyHash;
+        _keyHash2 = keyHash2;
         _secondaryCollision = nextSecondaryCollision;
     }
     
@@ -69,13 +69,18 @@ public class TwoKeyPOJOCacheEntry<K1,K2,V>
      */
     
     @Override
-    public K2 getSecondaryKey() {
+    public final K2 getSecondaryKey() {
         return _key2;
     }
-
+    
     @Override
     public final int getSecondaryKeyHash() { return _keyHash2; }
 
+    @Override
+    public final boolean hasSecondaryKey() {
+        return _key2 != null;
+    }
+    
     /*
     /**********************************************************************
     /* Standard method overrides
@@ -95,10 +100,8 @@ public class TwoKeyPOJOCacheEntry<K1,K2,V>
     /**********************************************************************
      */
 
-    @Override
-    protected void unlink()
-    {
-        super.unlink();
-        // !!! TODO:
-    }
+    /* Note: since 'unlink' only needs to unlink LRU/expiration chains,
+     * we do NOT need to override it.
+     */
+//    @Override protected void unlink() { }
 }

@@ -1,26 +1,29 @@
 package com.fasterxml.cachemate.pojo;
 
-import java.util.*;
+import java.util.LinkedHashMap;
+import java.util.Random;
 
-import com.fasterxml.cachemate.CacheEntry;
+import com.fasterxml.cachemate.*;
+import com.fasterxml.cachemate.converters.IntegerKeyConverter;
+import com.fasterxml.cachemate.converters.LongKeyConverter;
 import com.fasterxml.cachemate.converters.StringKeyConverter;
-import com.fasterxml.cachemate.pojo.POJOCacheElement;
-
-import junit.framework.TestCase;
 
 /**
- * Unit tests verifying correct functioning of {@link POJOCacheElement}
- * as stand-alone cache component.
+ * Unit tests to verify two-key cache element variant.
  */
-public class TestBoundedLRUCacheElement extends TestCase
+public class TestTwoKeyPOJOCacheElement extends POJOTestBase
 {
+    /**
+     * Unit test to verify that cache starts empty and with specific settings.
+     */
     /**
      * Unit test to verify that cache starts empty and with specific settings.
      */
     public void testInitialState() throws Exception
     {
         // Use Strings as keys, values
-        POJOCacheElement<String,String> cache = new POJOCacheElement<String,String>(StringKeyConverter.instance,
+        TwoKeyPOJOCacheElement<String,Long,String> cache = new TwoKeyPOJOCacheElement<String,Long,String>
+            (StringKeyConverter.instance, LongKeyConverter.instance,
                 64, 64 * 1024, /* ttl */ 4);
         // base size; no entries, no content memory usage
         assertEquals(0, cache.size());
@@ -31,8 +34,12 @@ public class TestBoundedLRUCacheElement extends TestCase
 
         // shouldn't find anything:
         long time = 3000L; // at "3 seconds"
+
         assertNull(cache.findEntry(time, "a"));
         assertNull(cache.findEntry(time, "foobar"));
+        assertNull(cache.findEntryBySecondary(time, Long.valueOf(3L)));
+        assertNull(cache.findEntryBySecondary(time, Long.valueOf(-19L)));
+        
         // nor be able to remove anything (but shouldn't fail either)
         assertNull(cache.removeEntry(time, "a"));
 
@@ -47,36 +54,40 @@ public class TestBoundedLRUCacheElement extends TestCase
      */
     public void testSimpleInserts() throws Exception
     {
-        POJOCacheElement<String,String> cache = new POJOCacheElement<String,String>(StringKeyConverter.instance,
-                64, 64 * 1024, /* ttl */ 4);
+        TwoKeyPOJOCacheElement<String,Long,String> cache = new TwoKeyPOJOCacheElement<String,Long,String>
+            (StringKeyConverter.instance, LongKeyConverter.instance,
+            64, 64 * 1024, /* ttl */ 4);
         long time = 3000L; // at "3 seconds"
-        assertNull(cache.putEntry(time, "abc", "def", 3));
+        assertNull(cache.putEntry(time, "first", Long.valueOf(15L), "yes", 3));
         assertEquals(1, cache.size());
         assertEquals(3, cache.contentsWeight());
 
         // basic checks after first insert
-        CacheEntry<String,String> entry = cache.oldestEntry(time);
+        TwoKeyCacheEntry<String,Long,String> entry = cache.oldestEntry(time);
         assertNotNull(entry);
-        assertEquals("abc", entry.getKey());
-        assertEquals("def", entry.getValue());
+        assertEquals("first", entry.getKey());
+        assertEquals(Long.valueOf(15L), entry.getSecondaryKey());
+        assertEquals("yes", entry.getValue());
         
         entry = cache.newestEntry(time);
-        assertEquals("abc", entry.getKey());
+        assertEquals("first", entry.getKey());
         entry = cache.leastRecentEntry(time);
-        assertEquals("abc", entry.getKey());
+        assertEquals("first", entry.getKey());
         entry = cache.mostRecentEntry(time);
-        assertEquals("abc", entry.getKey());
+        assertEquals("first", entry.getKey());
 
         // Then two more simple inserts
-        assertNull(cache.putEntry(time, "12", "34", 4));
-        assertNull(cache.putEntry(time, "xxx", "y", 5));
+        assertNull(cache.putEntry(time, "12", 12L, "34", 4));
+        assertNull(cache.putEntry(time, "xxx", -3L, "y", 5));
         assertEquals(3, cache.size());
         assertEquals(12, cache.contentsWeight());
 
-        assertEquals("abc", cache.oldestEntry(time).getKey());
+        assertEquals("first", cache.oldestEntry(time).getKey());
+        assertEquals(Long.valueOf(15L), cache.oldestEntry(time).getSecondaryKey());
         // no access, so this is still the same
-        assertEquals("abc", cache.leastRecentEntry(time).getKey());
+        assertEquals("first", cache.leastRecentEntry(time).getKey());
         assertEquals("xxx", cache.newestEntry(time).getKey());
+        assertEquals(Long.valueOf(-3L), cache.newestEntry(time).getSecondaryKey());
         assertEquals("xxx", cache.mostRecentEntry(time).getKey());
     }
 
@@ -87,41 +98,45 @@ public class TestBoundedLRUCacheElement extends TestCase
     public void testInsertWithOverflow() throws Exception
     {
         // no time-based expiration (1000 seconds)
-        POJOCacheElement<String,String> cache = new POJOCacheElement<String,String>(StringKeyConverter.instance,
+        TwoKeyPOJOCacheElement<String,Long,String> cache = new TwoKeyPOJOCacheElement<String,Long,String>
+        (StringKeyConverter.instance, LongKeyConverter.instance,
                 3, 3 * 1024, 1000L);
         // invalidate one entry per get-operation
         cache.setConfigInvalidatePerGet(1);
         
         long time = 3000L; // at "3 seconds"
-        assertNull(cache.putEntry(time, "abc", "def", 3));
+        assertNull(cache.putEntry(time, "abc", 1L, "def", 3));
         assertEquals(1, cache.size());
         assertEquals(3, cache.contentsWeight());
+        assertNotNull(cache.findEntryBySecondary(time, Long.valueOf(1L)));
+        assertNull(cache.findEntryBySecondary(time, 2L));
         ++time;
         
-        assertNull(cache.putEntry(time, "bcd", "123", 4));
+        assertNull(cache.putEntry(time, "bcd", 2L, "123", 4));
         assertEquals(2, cache.size());
         assertEquals(7, cache.contentsWeight());
+        assertNotNull(cache.findEntryBySecondary(time, 2L));
         ++time;
 
-        assertNull(cache.putEntry(time, "cde", "3", 5));
+        assertNull(cache.putEntry(time, "cde", 3L, "3", 5));
         assertEquals(3, cache.size());
         assertEquals(12, cache.contentsWeight());
         ++time;
 
         // this should result in removal of the first entry, "abc"
-        assertNull(cache.putEntry(time, "def", "x", 6));
+        assertNull(cache.putEntry(time, "def", 4L, "x", 6));
         assertEquals(3, cache.size());
         assertEquals(15, cache.contentsWeight());
         ++time;
 
         // this for second entry
-        assertNull(cache.putEntry(time, "efg", "x", 2));
+        assertNull(cache.putEntry(time, "efg", 5L, "x", 2));
         assertEquals(3, cache.size());
         assertEquals(13, cache.contentsWeight());
         ++time;
 
         // and this for the third original entry
-        assertNull(cache.putEntry(time, "fgh", "x", 1));
+        assertNull(cache.putEntry(time, "fgh", 6L, "x", 1));
         assertEquals(3, cache.size());
         assertEquals(9, cache.contentsWeight());
         ++time;
@@ -138,29 +153,37 @@ public class TestBoundedLRUCacheElement extends TestCase
         assertEquals(1L, cache.contentsWeight());
 
         // but how about mixing with inserts?
-        assertNull(cache.putEntry(time, "xxx", "yyy", 9));
+        assertNull(cache.putEntry(time, "xxx", 7L, "yyy", 9));
         assertEquals(1, cache.size());
         assertEquals(9, cache.contentsWeight());
+
+        assertNull(cache.findEntry(time, "abc"));
+        // should not find initial insert by secondary either
+        assertNull(cache.findEntryBySecondary(time, 1L));    
     }
-    
+
     public void testSimpleAccess() throws Exception
     {
-        POJOCacheElement<String,String> cache = new POJOCacheElement<String,String>(StringKeyConverter.instance,
+        TwoKeyPOJOCacheElement<String,Long,String> cache = new TwoKeyPOJOCacheElement<String,Long,String>
+            (StringKeyConverter.instance, LongKeyConverter.instance,
                 64, 64 * 1024, 4); // 4 == ttl in seconds
         long time = 3000L; // at "3 seconds"
-        assertNull(cache.putEntry(time, "abc", "def", 3));
+
+        assertNull(cache.putEntry(time, "abc", 1L, "def", 3));
 
         time += 1000L; // 4 seconds
-        assertNull(cache.putEntry(time, "12", "34", 4));
+        assertNull(cache.putEntry(time, "12", 2L, "34", 4));
         time += 1000L; // 5 seconds
-        assertNull(cache.putEntry(time, "xxx", "y", 5));
+        assertNull(cache.putEntry(time, "xxx", 3L, "y", 5));
 
         // Starting state:
-        CacheEntry<String,String> entry = cache.oldestEntry(time);
+        TwoKeyCacheEntry<String,Long,String> entry = cache.oldestEntry(time);
         assertNotNull(entry);
         assertEquals("abc", entry.getKey());
+        assertEquals(Long.valueOf(1L), entry.getSecondaryKey());
         assertEquals("abc", cache.leastRecentEntry(time).getKey());
         assertEquals("xxx", cache.newestEntry(time).getKey());
+        assertEquals(Long.valueOf(3L), cache.newestEntry(time).getSecondaryKey());
         assertEquals("xxx", cache.mostRecentEntry(time).getKey());
 
         
@@ -168,7 +191,7 @@ public class TestBoundedLRUCacheElement extends TestCase
         assertEquals("[abc, 12, xxx]", cache.keysFromLeastToMostRecent().toString());
         
         // with access, should change
-        entry = cache.findEntry(time, "12");
+        entry = cache.findEntryBySecondary(time, Long.valueOf(2L));
         assertEquals("34", entry.getValue());
 
         assertEquals(3, cache.size());
@@ -179,7 +202,7 @@ public class TestBoundedLRUCacheElement extends TestCase
 
         // and even more so...
         assertEquals(3, cache.size());
-        assertEquals("def", cache.findEntry(time, "abc").getValue());
+        assertEquals("def", cache.findEntryBySecondary(time, Long.valueOf(1L)).getValue());
         assertEquals("[abc, 12, xxx]", cache.keysFromOldestToNewest().toString());
         assertEquals("[xxx, 12, abc]", cache.keysFromLeastToMostRecent().toString());
         
@@ -189,12 +212,13 @@ public class TestBoundedLRUCacheElement extends TestCase
 
     public void testSimpleStale() throws Exception
     {
-        POJOCacheElement<String,String> cache = new POJOCacheElement<String,String>(StringKeyConverter.instance,
+        TwoKeyPOJOCacheElement<String,Long,String> cache = new TwoKeyPOJOCacheElement<String,Long,String>
+        (StringKeyConverter.instance, LongKeyConverter.instance,
                 64, 64 * 1024, 4); // TTL 4 seconds
-        assertNull(cache.putEntry(3000L, "a", "1", 5)); // stale at about 7 seconds
-        assertNull(cache.putEntry(4000L, "b", "2", 3));
-        assertNull(cache.putEntry(5000L, "c", "3", 1));
-        assertNull(cache.putEntry(6000L, "d", "4", 9));
+        assertNull(cache.putEntry(3000L, "a", 1L, "1", 5)); // stale at about 7 seconds
+        assertNull(cache.putEntry(4000L, "b", 2L, "2", 3));
+        assertNull(cache.putEntry(5000L, "c", 3L, "3", 1));
+        assertNull(cache.putEntry(6000L, "d", 4L, "4", 9));
 
         assertEquals(4, cache.size());
         assertEquals(18, cache.contentsWeight());
@@ -204,77 +228,78 @@ public class TestBoundedLRUCacheElement extends TestCase
         assertEquals(3, cache.size());
         assertEquals(13, cache.contentsWeight());
 
-        assertEquals("b", cache.oldestEntry(7500L).getKey());
-        assertEquals("d", cache.newestEntry(7500L).getKey());
-        assertEquals("d", cache.mostRecentEntry(7500L).getKey());
-        assertEquals("b", cache.leastRecentEntry(7500L).getKey());
+        assertEquals(Long.valueOf(2L), cache.oldestEntry(7500L).getSecondaryKey());
+        assertEquals(Long.valueOf(4L), cache.newestEntry(7500L).getSecondaryKey());
+        assertEquals(Long.valueOf(4L), cache.mostRecentEntry(7500L).getSecondaryKey());
+        assertEquals(Long.valueOf(2L), cache.leastRecentEntry(7500L).getSecondaryKey());
 
         assertEquals("[b, c, d]", cache.keysFromOldestToNewest().toString());
         assertEquals("[b, c, d]", cache.keysFromLeastToMostRecent().toString());
         
-        assertEquals("2", cache.findEntry(7500L, "b").getValue());
+        assertEquals("2", cache.findEntryBySecondary(7500L, Long.valueOf(2L)).getValue());
         assertEquals("[b, c, d]", cache.keysFromOldestToNewest().toString());
         assertEquals("[c, d, b]", cache.keysFromLeastToMostRecent().toString());
 
         // at 8.5 seconds, remove one more:
-        assertNull(cache.findEntry(8500L, "b"));
+        assertNull(cache.findEntryBySecondary(8500L, Long.valueOf(2L)));
         assertEquals(2, cache.size());
         assertEquals(10, cache.contentsWeight());
         assertEquals("[c, d]", cache.keysFromOldestToNewest().toString());
         assertEquals("[c, d]", cache.keysFromLeastToMostRecent().toString());
-        assertEquals("3", cache.findEntry(8500L, "c").getValue());
+        assertEquals("3", cache.findEntryBySecondary(8500L, Long.valueOf(3L)).getValue());
         assertEquals("[c, d]", cache.keysFromOldestToNewest().toString());
         assertEquals("[d, c]", cache.keysFromLeastToMostRecent().toString());
     }
 
     public void testSimpleRemoval() throws Exception
     {
-        POJOCacheElement<String,String> cache = new POJOCacheElement<String,String>(StringKeyConverter.instance,
+        TwoKeyPOJOCacheElement<Integer,String,String> cache = new TwoKeyPOJOCacheElement<Integer,String,String>
+            (IntegerKeyConverter.instance, StringKeyConverter.instance,
                 64, 64 * 1024, 4); // 4 == ttl in seconds
         long time = 3000L; // at "3 seconds"
-        assertNull(cache.putEntry(time, "a", "1", 1));
-        assertNull(cache.putEntry(time, "b", "2", 2));
-        assertNull(cache.putEntry(time, "c", "3", 3));
-        assertNull(cache.putEntry(time, "d", "4", 4));
-        assertNull(cache.putEntry(time, "e", "5", 5));
+        assertNull(cache.putEntry(time, 1, "a", "1", 1));
+        assertNull(cache.putEntry(time, 2, "b", "2", 2));
+        assertNull(cache.putEntry(time, 3, "c", "3", 3));
+        assertNull(cache.putEntry(time, 4, "d", "4", 4));
+        assertNull(cache.putEntry(time, 5, "e", "5", 5));
         assertEquals(5, cache.size());
         assertEquals(15, cache.contentsWeight());
 
-        assertEquals("[a, b, c, d, e]", cache.keysFromOldestToNewest().toString());
-        assertEquals("[a, b, c, d, e]", cache.keysFromLeastToMostRecent().toString());
+        assertEquals("[1, 2, 3, 4, 5]", cache.keysFromOldestToNewest().toString());
+        assertEquals("[1, 2, 3, 4, 5]", cache.keysFromLeastToMostRecent().toString());
 
-        CacheEntry<String,String> entry = cache.removeEntry(time, "c");
+        TwoKeyCacheEntry<Integer,String,String> entry = cache.removeEntry(time, 3);
         assertNotNull(entry);
         assertEquals("3", entry.getValue());
         assertEquals(4, cache.size());
         assertEquals(12, cache.contentsWeight());
-        assertEquals("[a, b, d, e]", cache.keysFromOldestToNewest().toString());
-        assertEquals("[a, b, d, e]", cache.keysFromLeastToMostRecent().toString());
+        assertEquals("[1, 2, 4, 5]", cache.keysFromOldestToNewest().toString());
+        assertEquals("[1, 2, 4, 5]", cache.keysFromLeastToMostRecent().toString());
 
         // dummy removals do nothing:
-        assertNull(cache.removeEntry(time, "c"));
-        assertNull(cache.removeEntry(time, "3"));
+        assertNull(cache.removeEntry(time, 3));
+        assertNull(cache.removeEntry(time, 189));
         assertEquals(4, cache.size());
         assertEquals(12, cache.contentsWeight());
-        assertEquals("[a, b, d, e]", cache.keysFromOldestToNewest().toString());
-        assertEquals("[a, b, d, e]", cache.keysFromLeastToMostRecent().toString());
+        assertEquals("[1, 2, 4, 5]", cache.keysFromOldestToNewest().toString());
+        assertEquals("[1, 2, 4, 5]", cache.keysFromLeastToMostRecent().toString());
 
         // then some more accesses... removals, find, addition
-        assertEquals("2", cache.removeEntry(time, "b").getValue());
-        assertEquals("5", cache.removeEntry(time, "e").getValue());
+        assertEquals("2", cache.removeEntry(time, 2).getValue());
+        assertEquals("5", cache.removeEntry(time, 5).getValue());
         assertEquals(2, cache.size());
         assertEquals(5, cache.contentsWeight());
-        assertEquals("[a, d]", cache.keysFromOldestToNewest().toString());
-        assertEquals("[a, d]", cache.keysFromLeastToMostRecent().toString());
-        assertEquals("4", cache.findEntry(time, "d").getValue());
-        assertEquals("[a, d]", cache.keysFromOldestToNewest().toString());
-        assertEquals("[a, d]", cache.keysFromLeastToMostRecent().toString());
-        assertNull(cache.findEntry(time, "b"));
-        assertNull(cache.putEntry(time, "f", "6", 6));
+        assertEquals("[1, 4]", cache.keysFromOldestToNewest().toString());
+        assertEquals("[1, 4]", cache.keysFromLeastToMostRecent().toString());
+        assertEquals("4", cache.findEntryBySecondary(time, "d").getValue());
+        assertEquals("[1, 4]", cache.keysFromOldestToNewest().toString());
+        assertEquals("[1, 4]", cache.keysFromLeastToMostRecent().toString());
+        assertNull(cache.findEntryBySecondary(time, "b"));
+        assertNull(cache.putEntry(time, 6, "f", "6", 6));
         assertEquals(3, cache.size());
         assertEquals(11, cache.contentsWeight());
-        assertEquals("[a, d, f]", cache.keysFromOldestToNewest().toString());
-        assertEquals("[a, d, f]", cache.keysFromLeastToMostRecent().toString());
+        assertEquals("[1, 4, 6]", cache.keysFromOldestToNewest().toString());
+        assertEquals("[1, 4, 6]", cache.keysFromLeastToMostRecent().toString());
     }
 
     /**
@@ -284,7 +309,8 @@ public class TestBoundedLRUCacheElement extends TestCase
     public void testRandomOperations()
     {
         LinkedHashMap<String,Integer> map = new LinkedHashMap<String,Integer>(100, 0.8f, true);
-        POJOCacheElement<String,Integer> cache = new POJOCacheElement<String,Integer>(StringKeyConverter.instance,
+        TwoKeyPOJOCacheElement<String,Integer,Integer> cache = new TwoKeyPOJOCacheElement<String,Integer,Integer>
+            (StringKeyConverter.instance, IntegerKeyConverter.instance,
                 500, 64 * 1024, 4);
 
         Random rnd = new Random(123);
@@ -294,13 +320,14 @@ public class TestBoundedLRUCacheElement extends TestCase
             int oper = rnd.nextInt() & 3;
             Integer arg = rnd.nextInt() & 255;
             String key = String.valueOf(arg);
-            CacheEntry<String,Integer> entry = null;
+            Integer key2 = arg;
+            TwoKeyCacheEntry<String,Integer,Integer> entry = null;
             Integer resultArg, old = null;
 
             switch (oper) {
             case 0: // insert
                 old = map.put(key, arg);
-                entry = cache.putEntry(time, key, arg, 1);
+                entry = cache.putEntry(time, key, key2, arg, 1);
                 break;
             case 1: // remove
                 old = map.remove(key);
@@ -308,7 +335,8 @@ public class TestBoundedLRUCacheElement extends TestCase
                 break;
             default: // find, twice as many as inserts/removals
                 old = map.get(key);
-                entry = cache.findEntry(time, key);
+                // look up by secondary key (important!)
+                entry = cache.findEntryBySecondary(time, key2);
             }
             resultArg = (entry == null) ? null : entry.getValue();
             assertEquals("Results should have been same (oper "+oper+")", old, resultArg);
@@ -320,5 +348,4 @@ public class TestBoundedLRUCacheElement extends TestCase
 
         // And finally, let's ensure resulting ordering is identical
         assertEquals(map.keySet().toString(), cache.keysFromLeastToMostRecent().toString());
-    }
-}
+    }}

@@ -15,4 +15,12 @@ public interface TwoKeyCacheEntry<K1,K2,V>
      * if there is no secondary key
      */
     public int getSecondaryKeyHash();
+
+    /**
+     * Equivalent to
+     * <pre>
+     *   return (getSecondaryKey() != null);
+     * </pre>
+     */
+    public boolean hasSecondaryKey();
 }
