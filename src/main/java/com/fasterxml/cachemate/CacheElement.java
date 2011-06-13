@@ -16,90 +16,90 @@ public interface CacheElement<K, V>
      */
 
     /**
-     * Method for putting specified entry in this cache; if an entry with the _key
+     * Method for putting specified entry in this cache; if an entry with the key
      * exists, it will be replaced.
      * 
      * @param currentTime Logical timestamp of point when this operation
      *   occurs; usually system time, but may be different for tests. Typically
      *   same for all parts of a single logical transaction (multi-level
      *   lookup or removal)
-     * @param _key Key of the entry to insert
+     * @param key Key of the entry to insert
      * @param value Value for the entry to insert
-     * @param weight Combined weights of _key and value, not including
+     * @param weight Combined weights of key and value, not including
      *    overhead of entry wrapper
      *    
-     * @return Previous value for the _key, if any; usually null but could be non-null
+     * @return Previous value for the key, if any; usually null but could be non-null
      *    for race condition cases
      */
     public CacheEntry<K,V> putEntry(long currentTime, K key, V value, int weight);
 
     /**
-     * Method for putting specified entry in this cache; if an entry with the _key
+     * Method for putting specified entry in this cache; if an entry with the key
      * exists, it will be replaced.
      * 
      * @param currentTime Logical timestamp of point when this operation
      *   occurs; usually system time, but may be different for tests. Typically
      *   same for all parts of a single logical transaction (multi-level
      *   lookup or removal)
-     * @param _key Key of the entry to insert
-     * @param _keyHash Hash code for the _key
+     * @param key Key of the entry to insert
+     * @param keyHash Hash code for the key
      * @param value Value for the entry to insert
-     * @param weight Combined weights of _key and value, not including
+     * @param weight Combined weights of key and value, not including
      *    overhead of entry wrapper
      *    
-     * @return Previous value for the _key, if any; usually null but could be non-null
+     * @return Previous value for the key, if any; usually null but could be non-null
      *    for race condition cases
      */
     public CacheEntry<K,V> putEntry(long currentTime, K key, int keyHash,
             V value, int weight);
     
     /**
-     * Method for finding entry with specified _key from this cache element;
+     * Method for finding entry with specified key from this cache element;
      * returns null if no such entry exists; otherwise found entry
      * 
      * @param currentTime Logical timestamp of point when this operation
      *   occurs; usually system time, but may be different for tests. Typically
      *   same for all parts of a single logical transaction (multi-level
      *   lookup or removal)
-     * @param _key Key of the entry to find value for
+     * @param key Key of the entry to find value for
      */
     public CacheEntry<K,V> findEntry(long currentTime, K key);
 
     /**
-     * Method for finding entry with specified _key from this cache element;
+     * Method for finding entry with specified key from this cache element;
      * returns null if no such entry exists; otherwise found entry
      * 
      * @param currentTime Logical timestamp of point when this operation
      *   occurs; usually system time, but may be different for tests. Typically
      *   same for all parts of a single logical transaction (multi-level
      *   lookup or removal)
-     * @param _key Key of the entry to find value for
-     * @param _keyHash Hash code for the _key
+     * @param key Key of the entry to find value for
+     * @param keyHash Hash code for the key
      */
     public CacheEntry<K,V> findEntry(long currentTime, K key, int keyHash);
 
     /**
-     * Method for trying to remove entry with specified _key. Returns removed
+     * Method for trying to remove entry with specified key. Returns removed
      * entry, if one found; otherwise returns null
      * 
      * @param currentTime Logical timestamp of point when this operation
      *   occurs; usually system time, but may be different for tests. Typically
      *   same for all parts of a single logical transaction (multi-level
      *   lookup or removal)
-     * @param _key Key of the entry to find value for
+     * @param key Key of the entry to find value for
      */
     public CacheEntry<K,V> removeEntry(long currentTime, K key);
 
     /**
-     * Method for trying to remove entry with specified _key. Returns removed
+     * Method for trying to remove entry with specified key. Returns removed
      * entry, if one found; otherwise returns null
      * 
      * @param currentTime Logical timestamp of point when this operation
      *   occurs; usually system time, but may be different for tests. Typically
      *   same for all parts of a single logical transaction (multi-level
      *   lookup or removal)
-     * @param _key Key of the entry to find value for
-     * @param _keyHash Hash code for the _key
+     * @param key Key of the entry to find value for
+     * @param keyHash Hash code for the key
      */
     public CacheEntry<K,V> removeEntry(long currentTime, K key, int keyHash);
 
