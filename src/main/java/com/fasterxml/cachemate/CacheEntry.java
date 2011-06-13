@@ -28,6 +28,12 @@ public interface CacheEntry<K, V>
      */
     public V getValue();
 
+    /**
+     * Accessor for logical weight of this entry, used for determining
+     * size constraints. Weight includes both key and value weights.
+     */
+    public int getWeight();
+    
     /*
     /**********************************************************************
     /* Public accessors for metadata

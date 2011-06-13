@@ -47,6 +47,8 @@ public class TestTwoKeyPOJOCacheElement extends POJOTestBase
         assertNull(cache.newestEntry(time));
         assertNull(cache.leastRecentEntry(time));
         assertNull(cache.mostRecentEntry(time));
+
+        cache.checkSanity();
     }    
 
     /**
@@ -89,6 +91,8 @@ public class TestTwoKeyPOJOCacheElement extends POJOTestBase
         assertEquals("xxx", cache.newestEntry(time).getKey());
         assertEquals(Long.valueOf(-3L), cache.newestEntry(time).getSecondaryKey());
         assertEquals("xxx", cache.mostRecentEntry(time).getKey());
+
+        cache.checkSanity();
     }
 
     /**
@@ -160,6 +164,8 @@ public class TestTwoKeyPOJOCacheElement extends POJOTestBase
         assertNull(cache.findEntry(time, "abc"));
         // should not find initial insert by secondary either
         assertNull(cache.findEntryBySecondary(time, 1L));    
+
+        cache.checkSanity();
     }
 
     public void testSimpleAccess() throws Exception
@@ -208,6 +214,8 @@ public class TestTwoKeyPOJOCacheElement extends POJOTestBase
         
         assertEquals(3, cache.size());
         assertEquals(12, cache.contentsWeight());
+
+        cache.checkSanity();
     }
 
     public void testSimpleStale() throws Exception
@@ -249,6 +257,8 @@ public class TestTwoKeyPOJOCacheElement extends POJOTestBase
         assertEquals("3", cache.findEntryBySecondary(8500L, Long.valueOf(3L)).getValue());
         assertEquals("[c, d]", cache.keysFromOldestToNewest().toString());
         assertEquals("[d, c]", cache.keysFromLeastToMostRecent().toString());
+
+        cache.checkSanity();
     }
 
     public void testSimpleRemoval() throws Exception
@@ -300,6 +310,8 @@ public class TestTwoKeyPOJOCacheElement extends POJOTestBase
         assertEquals(11, cache.contentsWeight());
         assertEquals("[1, 4, 6]", cache.keysFromOldestToNewest().toString());
         assertEquals("[1, 4, 6]", cache.keysFromLeastToMostRecent().toString());
+
+        cache.checkSanity();
     }
 
     /**
@@ -348,4 +360,7 @@ public class TestTwoKeyPOJOCacheElement extends POJOTestBase
 
         // And finally, let's ensure resulting ordering is identical
         assertEquals(map.keySet().toString(), cache.keysFromLeastToMostRecent().toString());
-    }}
+
+        cache.checkSanity();
+    }
+}

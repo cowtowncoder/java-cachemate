@@ -38,6 +38,8 @@ public class TestPOJOCacheElement extends POJOTestBase
         assertNull(cache.newestEntry(time));
         assertNull(cache.leastRecentEntry(time));
         assertNull(cache.mostRecentEntry(time));
+
+        cache.checkSanity();
     }    
 
     /**
@@ -76,6 +78,8 @@ public class TestPOJOCacheElement extends POJOTestBase
         assertEquals("abc", cache.leastRecentEntry(time).getKey());
         assertEquals("xxx", cache.newestEntry(time).getKey());
         assertEquals("xxx", cache.mostRecentEntry(time).getKey());
+
+        cache.checkSanity();
     }
 
     /**
@@ -139,6 +143,8 @@ public class TestPOJOCacheElement extends POJOTestBase
         assertNull(cache.putEntry(time, "xxx", "yyy", 9));
         assertEquals(1, cache.size());
         assertEquals(9, cache.contentsWeight());
+
+        cache.checkSanity();
     }
     
     public void testSimpleAccess() throws Exception
@@ -183,6 +189,8 @@ public class TestPOJOCacheElement extends POJOTestBase
         
         assertEquals(3, cache.size());
         assertEquals(12, cache.contentsWeight());
+
+        cache.checkSanity();
     }
 
     public void testSimpleStale() throws Exception
@@ -223,6 +231,8 @@ public class TestPOJOCacheElement extends POJOTestBase
         assertEquals("3", cache.findEntry(8500L, "c").getValue());
         assertEquals("[c, d]", cache.keysFromOldestToNewest().toString());
         assertEquals("[d, c]", cache.keysFromLeastToMostRecent().toString());
+
+        cache.checkSanity();
     }
 
     public void testSimpleRemoval() throws Exception
@@ -273,6 +283,8 @@ public class TestPOJOCacheElement extends POJOTestBase
         assertEquals(11, cache.contentsWeight());
         assertEquals("[a, d, f]", cache.keysFromOldestToNewest().toString());
         assertEquals("[a, d, f]", cache.keysFromLeastToMostRecent().toString());
+
+        cache.checkSanity();
     }
 
     /**
@@ -318,5 +330,7 @@ public class TestPOJOCacheElement extends POJOTestBase
 
         // And finally, let's ensure resulting ordering is identical
         assertEquals(map.keySet().toString(), cache.keysFromLeastToMostRecent().toString());
+
+        cache.checkSanity();
     }
 }

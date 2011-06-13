@@ -138,36 +138,4 @@ public class POJOCacheElement<K, V>
         }
         return null;
     }
-    
-    /*
-    /**********************************************************************
-    /* Diagnostic methods
-    /**********************************************************************
-     */
-    
-    /**
-     * Method that tries to cross-check statistics to ensure that they are
-     * correct and compatible with each other; and if not, throw an
-     * {@link IllegalArgumentException} with details.
-     * Note that this should never need to be used for normal use; but
-     * may be called in case there are suspicions that the internal state
-     * could be corrupt due to synchronization issues (incorrect multi-threaded
-     * use of instance without proper synchronization)
-     */
-    protected void checkSanity()
-    {
-        int actualCount = 0;
-
-        // First: calculate real entry count from hash table and spill-over links
-        for (POJOCacheEntry<K,V> entry : _entries) {
-            while (entry != null) {
-                ++actualCount;
-                entry = entry._primaryCollision;
-            }
-        }
-        // and compare it to assumed number of entries
-        if (actualCount != _currentEntries) {
-            throw new IllegalStateException("Invalid count: actual "+actualCount+"; expected "+_currentEntries);
-        }
-    }
 }

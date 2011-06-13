@@ -140,6 +140,11 @@ abstract class POJOCacheEntryBase<K, V, SUBTYPE extends POJOCacheEntryBase<K, V,
     @Override
     public final int getKeyHash() { return _keyHash; }
 
+    @Override
+    public final int getWeight() {
+        return _weight;
+    }
+    
     /*
     /**********************************************************************
     /* Public accessors, metadata

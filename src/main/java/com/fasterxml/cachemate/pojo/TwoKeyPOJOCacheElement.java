@@ -382,30 +382,29 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
      */
     protected void checkSanity()
     {
-        int actualCount = 0;
+        super.checkSanity();
+        int expCount = _currentEntries;
 
-        // First: calculate real entry count from hash table and spill-over links
-        for (TwoKeyPOJOCacheEntry<K1,K2,V> entry : _entries) {
+        // check secondary chain too
+        int secondaryCount = 0;
+        for (TwoKeyPOJOCacheEntry<K1,K2,V> entry : _secondaryEntries) {
             while (entry != null) {
-                ++actualCount;
-                entry = entry._primaryCollision;
+                ++secondaryCount;
+                entry = entry._secondaryCollision;
             }
         }
-        // and compare it to assumed number of entries
-        if (actualCount != _currentEntries) {
-            throw new IllegalStateException("Invalid count: actual "+actualCount+"; expected "+_currentEntries);
+        if (secondaryCount != expCount) {
+            throw new IllegalStateException("Invalid count by secondary: actual "+secondaryCount+"; expected "+expCount);
         }
     }
-
+    
     /*
     /**********************************************************************
     /* Internal methods
     /**********************************************************************
      */
 
-    
     protected final int _secondaryHashIndex(int secondaryKeyHash) {
         return secondaryKeyHash & (_secondaryEntries.length - 1);
     }
-
 }

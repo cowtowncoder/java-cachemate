@@ -415,6 +415,76 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
         }
         return keys;
     }
+    /*
+    /**********************************************************************
+    /* Diagnostic methods
+    /**********************************************************************
+     */
+    
+    /**
+     * Method that tries to cross-check statistics to ensure that they are
+     * correct and compatible with each other; and if not, throw an
+     * {@link IllegalArgumentException} with details.
+     * Note that this should never need to be used for normal use; but
+     * may be called in case there are suspicions that the internal state
+     * could be corrupt due to synchronization issues (incorrect multi-threaded
+     * use of instance without proper synchronization)
+     */
+    protected void checkSanity()
+    {
+        final int expCount = _currentEntries;
+        final long expWeight = _currentContentsWeight;
+        
+        // First: verify that entry count agrees with one calculated via hash table chains:
+        int primaryCount = 0;
+        long primaryWeight = 0;
+        for (E entry : _entries) {
+            for (; entry != null; entry = entry._primaryCollision) {
+                ++primaryCount;
+                primaryWeight += entry.getWeight();
+            }
+        }
+        if (primaryCount != expCount) {
+            throw new IllegalStateException("Invalid count by primary: actual "+primaryCount+"; expected "+expCount);
+        }
+        if (primaryWeight != expWeight) {
+            throw new IllegalStateException("Invalid weight by primary: actual "+primaryWeight+"; expected "+expWeight);
+        }
+
+        // Then from newest to oldest
+        int oldCount = -2;
+        for (E entry = _oldEntryHead; entry != null; entry = entry._newerEntry) {
+            ++oldCount;
+        }
+        if (oldCount != expCount) {
+            throw new IllegalStateException("Invalid count by _oldEntryHead._newerEntry: actual "+oldCount+"; expected "+expCount);
+        }
+        oldCount = -2;
+        for (E entry = _oldEntryHead; entry != null; entry = entry.moreRecentEntry()) {
+            ++oldCount;
+        }
+        if (oldCount != expCount) {
+            throw new IllegalStateException("Invalid count by _oldEntryHead._moreRecentEntry: actual "+oldCount+"; expected "+expCount);
+        }
+
+        
+        // Then from oldest to newest on LRU and expiration:
+        int newCount = -2;
+        for (E entry = _newEntryHead; entry != null; entry = entry.olderEntry()) {
+            ++newCount;
+        }
+        if (newCount != expCount) {
+            throw new IllegalStateException("Invalid count by _oldEntryHead.lessRecentEntry(): actual "+newCount+"; expected "+expCount);
+        }
+        newCount = -2;
+        for (E entry = _newEntryHead; entry != null; entry = entry.lessRecentEntry()) {
+            ++newCount;
+        }
+        if (newCount != expCount) {
+            throw new IllegalStateException("Invalid count by _oldEntryHead.lessRecentEntry(): actual "+newCount+"; expected "+expCount);
+        }
+        // and expiration chains
+    }
     
     /*
     /**********************************************************************
