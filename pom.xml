@@ -124,7 +124,9 @@
               <Private-Package>
 </Private-Package>
               <Export-Package>
-com.fasterxml.cachemate
+com.fasterxml.cachemate,
+com.fasterxml.cachemate.converters,
+com.fasterxml.cachemate.pojo
 </Export-Package>
             </instructions>
           </configuration>
