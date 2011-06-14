@@ -363,4 +363,27 @@ public class TestTwoKeyPOJOCacheElement extends POJOTestBase
 
         cache.checkSanity();
     }
+
+    /* Test that will just try to insert big number of (somewhat) colliding entries,
+     * to verify that collision handling should work as expected.
+     */
+    public void testRandomInserts()
+    {
+        TwoKeyPOJOCacheElement<Integer,Long,Integer> cache = new TwoKeyPOJOCacheElement<Integer,Long,Integer>
+            (IntegerKeyConverter.instance, LongKeyConverter.instance,
+                100, 64 * 1024, 4);
+        Random rnd = new Random(123);
+        final long time = 9000L;
+        int i = 0;
+        for (; i < 10000; ++i) {
+            int key = rnd.nextInt() & 0xFF;
+            long key2 = rnd.nextInt() & 0xFF;
+            cache.putEntry(time, key, key2, key, 1);
+        }
+
+        // should just be full by now
+        assertEquals(100, cache.size());
+        // and still fully 'sane'
+        cache.checkSanity();
+    }
 }

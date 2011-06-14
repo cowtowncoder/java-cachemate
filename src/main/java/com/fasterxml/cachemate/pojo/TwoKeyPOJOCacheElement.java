@@ -264,7 +264,7 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
                     break;
                 }
                 prevSecondary = currSecondary;
-                currSecondary = currSecondary._primaryCollision;
+                currSecondary = currSecondary._secondaryCollision;
             }
         } else {
             secondaryHashIndex = -1;
@@ -308,7 +308,7 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
                     break;
                 }
                 prevSecondary = curr;
-                curr = curr._primaryCollision;
+                curr = curr._secondaryCollision;
             }
         } else {
             secondaryIndex = -1;
