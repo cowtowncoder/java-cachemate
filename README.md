@@ -3,7 +3,7 @@ It uses multiple (by default, 3) level cache, and simple LRU-based generational 
 
 # Documentation
 
-Check out [project wiki][https://github.com/cowtowncoder/java-cachemate/wiki] for more documentation, including javadocs
+Check out [project wiki](https://github.com/cowtowncoder/java-cachemate/wiki) for more documentation, including javadocs
 
 # Status
 
