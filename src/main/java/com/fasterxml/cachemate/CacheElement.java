@@ -18,6 +18,7 @@ public interface CacheElement<K, V>
     /**
      * Method for putting specified entry in this cache; if an entry with the key
      * exists, it will be replaced.
+     * Note that time-to-live used is the default TTL.
      * 
      * @param currentTime Logical timestamp of point when this operation
      *   occurs; usually system time, but may be different for tests. Typically
@@ -33,6 +34,29 @@ public interface CacheElement<K, V>
      */
     public CacheEntry<K,V> putEntry(long currentTime, K key, V value, int weight);
 
+    /**
+     * Method for putting specified entry in this cache; if an entry with the key
+     * exists, it will be replaced.
+     * Note that time-to-live used is the default TTL.
+     * 
+     * @param currentTime Logical timestamp of point when this operation
+     *   occurs; usually system time, but may be different for tests. Typically
+     *   same for all parts of a single logical transaction (multi-level
+     *   lookup or removal)
+     * @param timeToLiveSecs TTL value to use for this particular entry, instead of
+     *   the default TTL
+     * @param key Key of the entry to insert
+     * @param value Value for the entry to insert
+     * @param weight Combined weights of key and value, not including
+     *    overhead of entry wrapper
+     *    
+     * @return Previous value for the key, if any; usually null but could be non-null
+     *    for race condition cases
+     * 
+     * @since 0.5.0
+     */
+    public CacheEntry<K,V> putEntry(long currentTime, int timeToLiveSecs, K key, V value, int weight);
+    
     /**
      * Method for putting specified entry in this cache; if an entry with the key
      * exists, it will be replaced.
@@ -52,6 +76,30 @@ public interface CacheElement<K, V>
      */
     public CacheEntry<K,V> putEntry(long currentTime, K key, int keyHash,
             V value, int weight);
+
+    /**
+     * Method for putting specified entry in this cache; if an entry with the key
+     * exists, it will be replaced.
+     * 
+     * @param currentTime Logical timestamp of point when this operation
+     *   occurs; usually system time, but may be different for tests. Typically
+     *   same for all parts of a single logical transaction (multi-level
+     *   lookup or removal)
+     * @param timeToLiveSecs TTL value to use for this particular entry, instead of
+     *   the default TTL
+     * @param key Key of the entry to insert
+     * @param keyHash Hash code for the key
+     * @param value Value for the entry to insert
+     * @param weight Combined weights of key and value, not including
+     *    overhead of entry wrapper
+     *    
+     * @return Previous value for the key, if any; usually null but could be non-null
+     *    for race condition cases
+     *    
+     * @since 0.5.0
+     */
+    public CacheEntry<K,V> putEntry(long currentTime, int timeToLiveSecs,
+            K key, int keyHash, V value, int weight);
     
     /**
      * Method for finding entry with specified key from this cache element;

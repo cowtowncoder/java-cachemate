@@ -17,7 +17,14 @@ public interface TwoKeyCacheElement<K1, K2, V>
     public TwoKeyCacheEntry<K1, K2, V> putEntry(long currentTime, K1 key, V value, int weight);
 
     @Override
+    public TwoKeyCacheEntry<K1, K2, V> putEntry(long currentTime, int timeToLiveSecs, K1 key, V value, int weight);
+    
+    @Override
     public TwoKeyCacheEntry<K1, K2, V> putEntry(long currentTime, K1 key, int keyHash,
+            V value, int weight);
+
+    @Override
+    public TwoKeyCacheEntry<K1, K2, V> putEntry(long currentTime, int timeToLiveSecs, K1 key, int keyHash,
             V value, int weight);
     
     @Override
@@ -34,7 +41,7 @@ public interface TwoKeyCacheElement<K1, K2, V>
     
     /*
     /**********************************************************************
-    /* Addditional methods using secondary key.
+    /* Additional methods using secondary key.
     /* Note that no additional remove methods are exposed since secondary
     /* keys are not guaranteed to be unique; to remove, need to combine
     /* lookup (to get primary key) with removal
@@ -42,7 +49,14 @@ public interface TwoKeyCacheElement<K1, K2, V>
      */
 
     public TwoKeyCacheEntry<K1, K2, V> putEntry(long currentTime, K1 primaryKey, K2 secondaryKey, V value, int weight);
+    public TwoKeyCacheEntry<K1, K2, V> putEntry(long currentTime, int timeToLiveSecs,
+            K1 primaryKey, K2 secondaryKey, V value, int weight);
+
     public TwoKeyCacheEntry<K1, K2, V> putEntry(long currentTime, K1 primaryKey, int primaryKeyHash,
+            K2 secondaryKey, int secondaryKeyHash,
+            V value, int weight);
+    public TwoKeyCacheEntry<K1, K2, V> putEntry(long currentTime, int timeToLiveSecs,
+            K1 primaryKey, int primaryKeyHash,
             K2 secondaryKey, int secondaryKeyHash,
             V value, int weight);
     

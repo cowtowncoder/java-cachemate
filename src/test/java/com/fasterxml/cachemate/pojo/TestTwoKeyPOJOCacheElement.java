@@ -104,7 +104,7 @@ public class TestTwoKeyPOJOCacheElement extends POJOTestBase
         // no time-based expiration (1000 seconds)
         TwoKeyPOJOCacheElement<String,Long,String> cache = new TwoKeyPOJOCacheElement<String,Long,String>
         (StringKeyConverter.instance, LongKeyConverter.instance,
-                3, 3 * 1024, 1000L);
+                3, 3 * 1024, 1000);
         // invalidate one entry per get-operation
         cache.setConfigInvalidatePerGet(1);
         

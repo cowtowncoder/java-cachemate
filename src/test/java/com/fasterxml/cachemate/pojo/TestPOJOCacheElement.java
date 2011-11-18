@@ -90,7 +90,7 @@ public class TestPOJOCacheElement extends POJOTestBase
     {
         // no time-based expiration (1000 seconds)
         POJOCacheElement<String,String> cache = new POJOCacheElement<String,String>(StringKeyConverter.instance,
-                3, 3 * 1024, 1000L);
+                3, 3 * 1024, 1000);
         // invalidate one entry per get-operation
         cache.setConfigInvalidatePerGet(1);
         

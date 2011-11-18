@@ -35,10 +35,10 @@ public class POJOCacheEntry<K, V>
         this(null, 0, null, 0, 0, null);
     }
     
-    public POJOCacheEntry(K key, int keyHash, V value, int insertTime, int weight,
+    public POJOCacheEntry(K key, int keyHash, V value, int expirationTime, int weight,
             POJOCacheEntry<K,V> nextCollision)
     {
-        super(key, keyHash, value, insertTime, weight, nextCollision);
+        super(key, keyHash, value, expirationTime, weight, nextCollision);
     }
 
     /*

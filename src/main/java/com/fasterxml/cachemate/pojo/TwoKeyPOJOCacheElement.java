@@ -62,7 +62,7 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
     @SuppressWarnings("unchecked")
     public TwoKeyPOJOCacheElement(KeyConverter<K1> keyConverter, KeyConverter<K2> secondaryKeyConverter,
             int maxEntries, long maxWeight,
-            long timeToLiveSecs)
+            int timeToLiveSecs)
     {
         super(keyConverter, maxEntries, timeToLiveSecs,
             (TwoKeyPOJOCacheEntry<K1,K2,V>[]) new TwoKeyPOJOCacheEntry<?,?,?>[calcHashAreaSize(maxEntries)]);
@@ -96,19 +96,49 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
      */
 
     @Override
-    public TwoKeyPOJOCacheEntry<K1, K2, V> putEntry(long currentTime, K1 primaryKey, K2 secondaryKey, V value, int weight)
+    public final TwoKeyPOJOCacheEntry<K1, K2, V> putEntry(long currentTime,
+            K1 primaryKey, K2 secondaryKey, V value, int weight)
     {
         int primHash = _keyConverter.keyHash(primaryKey);
         int secHash = (secondaryKey == null) ? 0 : _secondaryKeyConverter.keyHash(secondaryKey);
-        return putEntry(currentTime, primaryKey, primHash, secondaryKey, secHash, value, weight);
+        return _putEntry(currentTime, _configTimeToLive, primaryKey, primHash,
+                secondaryKey, secHash, value, weight);
     }
 
-    /* Addition of entries here is quite similar to the single-key puts,
-     * as most commonal parts are refactored out.
-     */
     @Override
-    public TwoKeyPOJOCacheEntry<K1, K2, V> putEntry(long currentTime, K1 primaryKey, int primaryKeyHash,
-            K2 secondaryKey, int secondaryKeyHash,
+    public final TwoKeyPOJOCacheEntry<K1, K2, V> putEntry(long currentTime, int timeToLiveSecs,
+            K1 primaryKey, K2 secondaryKey, V value, int weight)
+    {
+        int primHash = _keyConverter.keyHash(primaryKey);
+        int secHash = (secondaryKey == null) ? 0 : _secondaryKeyConverter.keyHash(secondaryKey);
+        return _putEntry(currentTime, _secondsToInternal(timeToLiveSecs), primaryKey, primHash,
+                secondaryKey, secHash, value, weight);
+    }
+    
+    @Override
+    public final TwoKeyPOJOCacheEntry<K1, K2, V> putEntry(long currentTime,
+            K1 primaryKey, int primaryKeyHash, K2 secondaryKey, int secondaryKeyHash,
+            V value, int weight)
+    {
+        return _putEntry(currentTime, _configTimeToLive, primaryKey, primaryKeyHash,
+                secondaryKey, secondaryKeyHash, value, weight);
+    }
+
+    @Override
+    public final TwoKeyPOJOCacheEntry<K1, K2, V> putEntry(long currentTime, int timeToLiveSecs,
+            K1 primaryKey, int primaryKeyHash, K2 secondaryKey, int secondaryKeyHash,
+            V value, int weight)
+    {
+        return _putEntry(currentTime, _secondsToInternal(timeToLiveSecs), primaryKey, primaryKeyHash,
+                secondaryKey, secondaryKeyHash, value, weight);
+    }
+
+    /**
+     * Actual method used by all convenience methods for putting given entry in
+     * cache.
+     */
+    protected TwoKeyPOJOCacheEntry<K1, K2, V> _putEntry(long currentTime, int timeToLiveQ,
+            K1 primaryKey, int primaryKeyHash, K2 secondaryKey, int secondaryKeyHash,
             V value, int weight)
     {
         TwoKeyPOJOCacheEntry<K1, K2, V> existingEntry = _removeByPrimary(currentTime,
@@ -128,7 +158,7 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
         }
         TwoKeyPOJOCacheEntry<K1, K2, V> newEntry = new TwoKeyPOJOCacheEntry<K1, K2, V>(
                 primaryKey, primaryKeyHash, secondaryKey, secondaryKeyHash,
-                value, _timeToTimestamp(currentTime), weight,
+                value, _timeToTimestamp(currentTime) + timeToLiveQ, weight,
                 nextPrimary, nextSecondary);
         _entries[primaryIndex] = newEntry;
         if (secondaryKey != null) {
@@ -137,7 +167,7 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
         _linkNewEntry(currentTime, newEntry, weight);
         return existingEntry;
     }
-
+    
     @Override
     public TwoKeyPOJOCacheEntry<K1, K2, V> findEntryBySecondary(long currentTime, K2 secondaryKey)
     {
@@ -158,12 +188,12 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
         // First, locate the entry, but keep track of position within hash/collision chain:
         TwoKeyPOJOCacheEntry<K1, K2, V> prev = null;
         TwoKeyPOJOCacheEntry<K1, K2, V> entry = _secondaryEntries[index];
-        int expireTime = _latestStaleTimestamp(currentTime);
+        int currTimeInQ = _timeToTimestamp(currentTime);
 
         while (entry != null) {
             if ((entry._keyHash2 == secondaryHash) && _secondaryKeyConverter.keysEqual(secondaryKey, entry.getSecondaryKey())) {
                 // And if match, verify it is not stale
-                if (entry._insertionTime <= expireTime) { // if stale, remove
+                if (_expired(entry, currTimeInQ)) {
                     _removeEntry(entry);
                     entry = null;
                 } else { // if not stale, move as LRU
@@ -192,7 +222,7 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
 
         // also: if aggressively cleaning up, remove stale entries
         int count = _configInvalidatePerGet;
-        while (count > 0 && _invalidateOldestIfStale(expireTime)) {
+        while (count > 0 && _invalidateOldestIfStale(currTimeInQ)) {
             --count;
         }
         return entry;
@@ -359,9 +389,10 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
      * secondary key is used.
      */
     @Override
-    protected TwoKeyPOJOCacheEntry<K1,K2,V> _createEntry(K1 key, int keyHash, V value, int timestamp, int weight,
+    protected TwoKeyPOJOCacheEntry<K1,K2,V> _createEntry(K1 key, int keyHash, V value,
+            int expirationTime, int weight,
             TwoKeyPOJOCacheEntry<K1,K2,V> nextCollision) {
-        return new TwoKeyPOJOCacheEntry<K1,K2,V>(key, keyHash, null, 0, value, timestamp, weight,
+        return new TwoKeyPOJOCacheEntry<K1,K2,V>(key, keyHash, null, 0, value, expirationTime, weight,
                 nextCollision, null);
     }
     

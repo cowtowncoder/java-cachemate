@@ -40,9 +40,9 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
     protected int _maxEntries;
     
     /**
-     * Length of time entries will remain non-stale in cache after being inserted;
-     * measure in units of 256 milliseconds (about quarter of a second). Unit chosen
-     * to allow using ints for time calculation.
+     * Default length of time entries will remain non-stale in cache after being inserted;
+     * measured in units of 256 milliseconds (about quarter of a second).
+     * Unit chosen  to allow using ints for time storage and calculation.
      */
     protected int _configTimeToLive;
 
@@ -62,7 +62,7 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
      * Setting that defines how many entries are to be checked for staleness
      * when adding an entry (even if no free space is needed); 0 means that no checks would be made
      */
-    protected int _configInvalidatePerInsert = 2;
+    protected int _configInvalidatePerInsert = 4;
 
     /*
     /**********************************************************************
@@ -134,15 +134,15 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
      */
 
     protected POJOCacheElementBase(KeyConverter<K> keyConverter,
-            int maxEntries, long timeToLiveSecs,
+            int maxEntries, int timeToLiveSecs,
             E[] entries)
     {
         _keyConverter = keyConverter;
         _maxEntries = maxEntries;
-        _configTimeToLive = (int) ((1000L * timeToLiveSecs) >> 8);
+        _configTimeToLive = _secondsToInternal((int) timeToLiveSecs);
         _entries = entries;
     }
-
+    
     protected static int calcHashAreaSize(int maxEntries)
     {
         int hashAreaSize = 16;
@@ -179,23 +179,45 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
     
     @Override
     public final E putEntry(long currentTime, K key, V value, int weight) {
-        return putEntry(currentTime, key, _keyConverter.keyHash(key), value, weight);
+        return _putEntry(currentTime, _configTimeToLive,
+                key, _keyConverter.keyHash(key), value, weight);
     }
     
     @Override
-    public final E putEntry(long currentTime, K key, int keyHash, V value, int weight)
+    public E putEntry(long currentTime, int timeToLiveSecs,
+            K key, V value, int weight) {
+        return _putEntry(currentTime, _secondsToInternal(timeToLiveSecs),
+                key, _keyConverter.keyHash(key), value, weight);
+    }
+    
+    @Override
+    public final E putEntry(long currentTime,
+            K key, int keyHash, V value, int weight)
     {
+        return _putEntry(currentTime, _configTimeToLive, key, keyHash, value, weight);
+    }
+
+    @Override
+    public final E putEntry(long currentTime, int timeToLiveSecs,
+            K key, int keyHash, V value, int weight)
+    {
+        return _putEntry(currentTime, _secondsToInternal(timeToLiveSecs), key, keyHash, value, weight);
+    }
+    
+    protected E _putEntry(long currentTime, int timeToLiveQ,
+            K key, int keyHash, V value, int weight)
+    {    
         E existingEntry = _removeByPrimary(currentTime, key, keyHash);
         // Either way, need to add the new entry next, as newest and MRU
         int index = _primaryHashIndex(keyHash);
-        E newEntry = _createEntry(key, keyHash, value, _timeToTimestamp(currentTime), weight,
-                _entries[index]);
+        E newEntry = _createEntry(key, keyHash, value, _timeToTimestamp(currentTime) + timeToLiveQ,
+                weight, _entries[index]);
         _entries[index] = newEntry;
 
         _linkNewEntry(currentTime, newEntry, weight);
         return existingEntry;
     }
-
+    
     @Override
     public final E findEntry(long currentTime, K key) {
         return findEntry(currentTime, key, _keyConverter.keyHash(key));
@@ -208,12 +230,11 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
         // First, locate the entry, but keep track of position within hash/collision chain:
         E prev = null;
         E entry = _entries[index];
-        int expireTime = _latestStaleTimestamp(currentTime);
+        int currTimeInQ = _timeToTimestamp(currentTime);
 
         while (entry != null) {
             if ((entry._keyHash == keyHash) && _keyConverter.keysEqual(key, entry.getKey())) {
-                // And if match, verify it is not stale
-                if (entry._insertionTime <= expireTime) { // if stale, remove
+                if (_expired(entry, currTimeInQ)) {
                     _removeEntry(entry, index, prev);
                     entry = null;
                 } else { // if not stale, move as LRU
@@ -242,7 +263,7 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
 
         // also: if aggressively cleaning up, remove stale entries
         int count = _configInvalidatePerGet;
-        while (count > 0 && _invalidateOldestIfStale(expireTime)) {
+        while (count > 0 && _invalidateOldestIfStale(currTimeInQ)) {
             --count;
         }
         return entry;
@@ -261,9 +282,9 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
         // also: if aggressively cleaning up, remove stale entries
         int count = _configInvalidatePerInsert;
         if (count > 0) {
-            int expireTime = _latestStaleTimestamp(currentTime);
+            int currTimeInQ = _timeToTimestamp(currentTime);
             do {
-                if (!_invalidateOldestIfStale(expireTime)) {
+                if (!_invalidateOldestIfStale(currTimeInQ)) {
                     break;
                 }
             } while (--count > 0);
@@ -298,9 +319,9 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
     public final int invalidateStale(long currentTimeMsecs, int maxToInvalidate)
     {
         int count = 0;
-        int earliestNonStale = _latestStaleTimestamp(currentTimeMsecs);
+        int currInQ = _timeToTimestamp(currentTimeMsecs);
         
-        while (count < maxToInvalidate && _invalidateOldestIfStale(earliestNonStale)) {
+        while (count < maxToInvalidate && _invalidateOldestIfStale(currInQ)) {
             ++count;
         }
         return count;
@@ -369,7 +390,7 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
     protected E oldestEntry(long currentTime)
     {
         // first, ensure we have dumped all stale entries, then return what's left if anything
-        while (_invalidateOldestIfStale(_latestStaleTimestamp(currentTime))) { }
+        while (_invalidateOldestIfStale(_timeToTimestamp(currentTime))) { }
         E oldest = _oldEntryHead.newerEntry();
         return (oldest != _newEntryHead) ? oldest : null;
     }
@@ -377,7 +398,7 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
     protected E newestEntry(long currentTime)
     {
         // first, ensure we have dumped all stale entries, then return what's left if anything
-        while (_invalidateOldestIfStale(_latestStaleTimestamp(currentTime))) { }
+        while (_invalidateOldestIfStale(_timeToTimestamp(currentTime))) { }
         E newest = _newEntryHead.olderEntry();
         return (newest != _oldEntryHead) ? newest : null;
     }
@@ -385,7 +406,7 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
     protected E leastRecentEntry(long currentTime)
     {
         // first, ensure we have dumped all stale entries, then return what's left if anything
-        while (_invalidateOldestIfStale(_latestStaleTimestamp(currentTime))) { }
+        while (_invalidateOldestIfStale(_timeToTimestamp(currentTime))) { }
         E leastRecent = _oldEntryHead.moreRecentEntry();
         return (leastRecent != _newEntryHead) ? leastRecent : null;
     }
@@ -393,7 +414,7 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
     protected E mostRecentEntry(long currentTime)
     {
         // first, ensure we have dumped all stale entries, then return what's left if anything
-        while (_invalidateOldestIfStale(_latestStaleTimestamp(currentTime))) { }
+        while (_invalidateOldestIfStale(_timeToTimestamp(currentTime))) { }
         E mostRecent = _newEntryHead.lessRecentEntry();
         return (mostRecent != _oldEntryHead) ? mostRecent : null;
     }
@@ -495,6 +516,27 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
     protected final int _primaryHashIndex(int keyHash) {
         return keyHash & (_entries.length - 1);
     }
+
+    /**
+     * Constants we use to check whether conversion to "quarters" can be
+     * done using just ints
+     */
+    private final static int MAX_SECONDS_FOR_INT = Integer.MAX_VALUE / 1000;
+    
+    /**
+     * Helper method that converts from seconds into internal time unit
+     * (which is approximately "quarter of a second")
+     */
+    protected static int _secondsToInternal(int seconds)
+    {
+        // fastest way is without converting to long, can be used for most cases:
+        if (seconds < MAX_SECONDS_FOR_INT) {
+            return (seconds * 1000) >>> 8;
+        }
+        // if not, use long
+        long msecs = 1000L * seconds;
+        return (int) (msecs >>> 8);
+    }
     
     protected final static int _timeToTimestamp(long currentTimeMsecs)
     {
@@ -504,19 +546,15 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
         }
         return time;
     }
-    
+
     /**
-     * Helper method that will return internal timestamp value (in units of
-     * 256 milliseconds, i.e. quarter second) of the latest timepoint
-     * that is stale.
+     * Helper method that will verify whether given entry is considered expired
+     * at given timepoint.
      */
-    protected int _latestStaleTimestamp(long currentTimeMsecs)
+    protected final boolean _expired(E entry, int currTimeInQ)
     {
-        // First, convert current time to units of ~1/4 second
-        int currentTime = _timeToTimestamp(currentTimeMsecs);
-        // then go back by time-to-live time units:
-        currentTime -= _configTimeToLive;
-        return currentTime;
+        int ttl = entry._expirationTime - currTimeInQ;
+        return (ttl <= 0);
     }
     
     /**
@@ -524,18 +562,16 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
      * is at least one entry in the cache, and it was inserted at or
      * before given timepoint.
      * 
-     * @param latestStaleTime Timestamp that indicates maximum timestamp that is considered
-     *    stale (in units of ~1/4 seconds)
+     * @param currTimeInQ Current timestamp in units of ~1/4 seconds
      */
-    protected boolean _invalidateOldestIfStale(int latestStaleTime)
+    protected boolean _invalidateOldestIfStale(int currTimeInQ)
     {
         E oldest = _oldEntryHead._newerEntry;
         if (oldest != _newEntryHead) {
             /* ok now: timestamps we use are relative (due to truncation), so
              * we MUST compare by subtraction, compare difference
              */
-            int diff = oldest._insertionTime - latestStaleTime;
-            if (diff <= 0) { // created at or before expiration time (latest timestamp that is stale)
+            if (_expired(oldest, currTimeInQ)) {
                 _removeEntry(oldest);
                 return true;
             }
@@ -588,7 +624,7 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
 
     protected abstract E _createDummyEntry();
 
-    protected abstract E _createEntry(K key, int keyHash, V value, int timestamp, int weight, E nextPrimaryCollision);
+    protected abstract E _createEntry(K key, int keyHash, V value, int expirationTime, int weight, E nextPrimaryCollision);
 
     protected final void _linkNewEntry(long currentTime, E newEntry, int weight)
     {
@@ -611,8 +647,8 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
 
         // Ok, then; let's see if we need to remove stale entries
         int count = _configInvalidatePerInsert;
-        int expireTime = _latestStaleTimestamp(currentTime);
         final long maxContentsWeight = maxContentsWeight();
+        int expireTime = _timeToTimestamp(currentTime);
         while ((count > 0) || (_currentEntries > _maxEntries) || (_currentContentsWeight > maxContentsWeight)) {
             if (!_invalidateOldestIfStale(expireTime)) {
                 break;

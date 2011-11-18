@@ -58,7 +58,7 @@ public class POJOCacheElement<K, V>
     @SuppressWarnings("unchecked")
     public POJOCacheElement(KeyConverter<K> keyConverter,
             int maxEntries, long maxWeight,
-            long timeToLiveSecs)
+            int timeToLiveSecs)
     {
         super(keyConverter, maxEntries, timeToLiveSecs,
                 (POJOCacheEntry<K,V>[]) new POJOCacheEntry<?,?>[calcHashAreaSize(maxEntries)]);
@@ -96,9 +96,9 @@ public class POJOCacheElement<K, V>
     }
 
     @Override
-    protected POJOCacheEntry<K,V> _createEntry(K key, int keyHash, V value, int timestamp, int weight,
+    protected POJOCacheEntry<K,V> _createEntry(K key, int keyHash, V value, int expirationTime, int weight,
             POJOCacheEntry<K,V> nextCollision) {
-        return new POJOCacheEntry<K,V>(key, keyHash, value, timestamp, weight, nextCollision);
+        return new POJOCacheEntry<K,V>(key, keyHash, value, expirationTime, weight, nextCollision);
     }
     
     @Override

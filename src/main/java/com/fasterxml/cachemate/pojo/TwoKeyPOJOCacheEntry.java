@@ -52,11 +52,11 @@ public class TwoKeyPOJOCacheEntry<K1,K2,V>
     }
     
     public TwoKeyPOJOCacheEntry(K1 key, int keyHash, K2 key2, int keyHash2,
-            V value, int insertTime, int weight,
+            V value, int expirationTime, int weight,
             TwoKeyPOJOCacheEntry<K1,K2,V> nextPrimaryCollision,
             TwoKeyPOJOCacheEntry<K1,K2,V> nextSecondaryCollision)
     {
-        super(key, keyHash, value, insertTime, weight, nextPrimaryCollision);
+        super(key, keyHash, value, expirationTime, weight, nextPrimaryCollision);
         _key2 = key2;
         _keyHash2 = keyHash2;
         _secondaryCollision = nextSecondaryCollision;

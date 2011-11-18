@@ -83,10 +83,10 @@ abstract class POJOCacheEntryBase<K, V, SUBTYPE extends POJOCacheEntryBase<K, V,
      */
 
     /**
-     * Timepoint when entry was added in cache, in units of 256 milliseconds
+     * Timepoint when entry is set to expire, in units of 256 milliseconds
      * (about quarter of a second). Used for staleness checks.
      */
-    protected final int _insertionTime;
+    protected final int _expirationTime;
     
     /**
      * Weight of this entry, including both _key and value
@@ -106,13 +106,13 @@ abstract class POJOCacheEntryBase<K, V, SUBTYPE extends POJOCacheEntryBase<K, V,
     /**********************************************************************
      */
     
-    protected POJOCacheEntryBase(K key, int keyHash, V value, int insertTime, int weight,
+    protected POJOCacheEntryBase(K key, int keyHash, V value, int expirationTime, int weight,
             SUBTYPE nextCollision)
     {
         _key = key;
         _value = value;
         _keyHash = keyHash;
-        _insertionTime = insertTime;
+        _expirationTime = expirationTime;
         _weight = weight;
         _primaryCollision = nextCollision;
     }
@@ -152,14 +152,12 @@ abstract class POJOCacheEntryBase<K, V, SUBTYPE extends POJOCacheEntryBase<K, V,
      */
 
     @Override
-    public long getAgeInMilliSeconds(long currentTime)
+    public long getExpirationInMilliSeconds(long currentTime)
     {
-        // we keep track of time in units of 256 milliseconds (to conserve memory):
-        long created = ((long) _insertionTime) << 8;
-        long diff = currentTime - created;
+        long expiryInMsecs = ((long) _expirationTime << 8);
+        long diff = expiryInMsecs - currentTime;
         return (diff < 0L) ? 0L : diff;
     }
-
     
     /*
     /**********************************************************************

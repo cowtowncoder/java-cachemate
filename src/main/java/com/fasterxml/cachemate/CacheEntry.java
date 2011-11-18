@@ -45,6 +45,28 @@ public interface CacheEntry<K, V>
      * 
      * @param currentTime Current time as reported by
      *    {link {@link System#currentTimeMillis()}
+     *    
+     * @deprecated Since 0.5 replaced by {@link #getExpirationInMilliSeconds(long)}
      */
-    public long getAgeInMilliSeconds(long currentTime);
+//    public long getAgeInMilliSeconds(long currentTime);
+
+    /**
+     * Accessor for getting an estimate of how long this entry may still be
+     * retained (and accessible) by the cache element.
+     * Can be used for things like refreshers that try to re-load new value
+     * before expiration.
+     * 
+     * Note that some backends may not be able to provide accurate estimate;
+     * possibly not even any. If so, any value between initial TTL and 0L is
+     * acceptable return value
+     * 
+     * @param currentTime Current time as reported by
+     *    {link {@link System#currentTimeMillis()}
+     *    (or provided as part of testing, simulation)
+     * 
+     * @return Approximate time until entry expires, in milliseconds.
+     * 
+     * @since 0.5.0
+     */
+    public long getExpirationInMilliSeconds(long currentTime);
 }
