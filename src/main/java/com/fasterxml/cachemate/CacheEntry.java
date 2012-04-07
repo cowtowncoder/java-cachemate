@@ -1,9 +1,10 @@
 package com.fasterxml.cachemate;
 
 /**
- * Entry for cache; contains both _key and value, to reduce number
- * of object instances needed. Also provides metadata useful for
- * caller.ache
+ * Entry object for in-memory Object cache, as well as general return entry
+ * for all {@link CacheElement}s.
+ * Contains both _key and value, to reduce number of object instances to be passed around.
+ * Also provides metadata useful for caller.
  */
 public interface CacheEntry<K, V>
 {

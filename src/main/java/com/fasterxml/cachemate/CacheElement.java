@@ -1,9 +1,12 @@
 package com.fasterxml.cachemate;
 
 /**
- * Interface for "simple" cache elements that map a single _key to
+ * Interface for "simple" cache components that map a single _key to
  * a value. Serves as the base for multi-_key variants, as
  * well as for concrete single-_key implementations.
+ * Term "element" here is to be understood as something that can serve
+ * as a cache, but more commonly forms a layering in an end-to-end
+ * caching system -- so, "element" does NOT mean same as "entry".
  * 
  * @author Tatu Saloranta
  */
