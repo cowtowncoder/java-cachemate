@@ -3,6 +3,8 @@ package com.fasterxml.cachemate.pojo;
 import java.util.Arrays;
 
 import com.fasterxml.cachemate.*;
+import com.fasterxml.cachemate.converters.KeyConverter;
+import com.fasterxml.cachemate.util.PlatformConstants;
 import com.fasterxml.cachemate.util.TimeUtil;
 
 public class TwoKeyPOJOCacheElement<K1,K2,V>

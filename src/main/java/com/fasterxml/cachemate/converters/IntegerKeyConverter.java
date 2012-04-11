@@ -1,7 +1,6 @@
 package com.fasterxml.cachemate.converters;
 
-import com.fasterxml.cachemate.KeyConverter;
-import com.fasterxml.cachemate.PlatformConstants;
+import com.fasterxml.cachemate.util.PlatformConstants;
 
 public class IntegerKeyConverter extends KeyConverter<Integer>
 {

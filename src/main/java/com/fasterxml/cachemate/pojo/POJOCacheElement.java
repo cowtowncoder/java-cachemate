@@ -1,8 +1,8 @@
 package com.fasterxml.cachemate.pojo;
 
-import com.fasterxml.cachemate.KeyConverter;
-import com.fasterxml.cachemate.PlatformConstants;
 import com.fasterxml.cachemate.CacheElement;
+import com.fasterxml.cachemate.converters.KeyConverter;
+import com.fasterxml.cachemate.util.PlatformConstants;
 
 /**
  * Special data structure used as an element of a cache (or in simplest cases,

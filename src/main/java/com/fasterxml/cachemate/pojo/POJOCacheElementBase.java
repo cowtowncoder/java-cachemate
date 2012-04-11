@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.List;
 
 import com.fasterxml.cachemate.*;
+import com.fasterxml.cachemate.converters.KeyConverter;
 import com.fasterxml.cachemate.util.TimeUtil;
 
 /**

@@ -1,23 +1,31 @@
-CacheMate is a simple in-memory, in-process (JVM) cache.
-It uses multiple (by default, 3) level cache, and simple LRU-based generational promote/demote algorithm.
+# Overview
 
-# Documentation
+CacheMate is a multi-level, in-memory, in-process (JVM) cache, with optional secondary key access.
+
+CacheMate provides two main cache implementations (called "cache elements"): Object-based LRU-based heap cache and raw byte-based off-heap cache; former being fully implemented and latter work in progress.
+
+In addition to providing configurable individual cache elements, CacheMate aims to provide out-of-box composite caches that use individual elements as layers to provide multi-level hierarchic cache, combining best features of on-heap POJO and off-heap raw caches.
+
+## Documentation
 
 Check out [project wiki](https://github.com/cowtowncoder/java-cachemate/wiki) for more documentation, including javadocs
 
-# Status
+## Status
 
-First part of the library is complete, well-tested and used in production system -- this is the in-memory, "level 1" cache.
-It can be thought of as a more memory-efficient (and time-bound, with TTL) version of JDK's java.util.LinkedHashMap.
+On-heap POJO cache element implementation is complete, well-tested and used in production system. It can be thought of as a more memory-efficient (and time-bound, with TTL) version of JDK's java.util.LinkedHashMap.
 
-Secondary/tertiary cache components will be the more interesting part, as they will support strict memory usage limits (based on serialized data); primary using non-heap memory (ByteBuffer), but possibly on-disk (SSD) as well.
-These components have not yet been implemented, but many of existing first-level abstractions will be used as-is.
+Secondary cache element, "raw" off-heap byte array cache is being actively developed and should be in usable state by May 2012. It will sport following features:
 
-The general plan is to allow these components to be usable both via "glue" abstractions that build multi-level logical cache, and as separate stand-alone components (in case more custom interaction is needed).
+ * Strict memory-use bounds, defined by application
+ * Design that allows efficient multi-threaded access (multi-threaded access is considered an important goal)
+ * Append-only insert, which balances good read performance with very good write performance
+ * Efficient time-bound eviction, by discarding blocks instead of individual entries; in general, more FIFO style than LRU
 
-# Usage
+Beyond implementing basic cache elements, the plan is to allow these components to be usable both via "glue" abstractions that build multi-level logical cache, and as separate stand-alone components (in case more custom interaction is needed).
 
-## Simple one-key, single-level
+## Usage, on-heap POJO cache
+
+### Simple one-key cache element
 
 For simple usage of the first-level "POJO" cache, you can do:
 
@@ -46,7 +54,7 @@ For simple usage of the first-level "POJO" cache, you can do:
     // or invalidate
     cache.removeEntry(System.currentTimeMillis(), "first");
 
-## Two-key, single-level
+### Two-key cache element
 
 If you want to use secondary keys, access is quite similar, you just need to provide secondary keys if you want; note that primary key access is still same as above:
 
@@ -79,3 +87,6 @@ If you want to use secondary keys, access is quite similar, you just need to pro
 Currently there is only support for two-key variants, but it is easy to extend this if necessary: new interfaces and implementations are needed but pattern is easy.
 The main reason for not yet adding is that since API is still evolving, it will be less working adding higher-dimension variants lazily as needed.
 
+## Usage, off-heap "raw" cache
+
+Since this cache element is still being implemented, no usage available yet!
