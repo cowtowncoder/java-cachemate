@@ -3,6 +3,7 @@ package com.fasterxml.cachemate.pojo;
 import java.util.Arrays;
 
 import com.fasterxml.cachemate.*;
+import com.fasterxml.cachemate.util.TimeUtil;
 
 public class TwoKeyPOJOCacheElement<K1,K2,V>
     extends POJOCacheElementBase<K1,V,TwoKeyPOJOCacheEntry<K1,K2,V>>
@@ -111,7 +112,7 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
     {
         int primHash = _keyConverter.keyHash(primaryKey);
         int secHash = (secondaryKey == null) ? 0 : _secondaryKeyConverter.keyHash(secondaryKey);
-        return _putEntry(currentTime, _secondsToInternal(timeToLiveSecs), primaryKey, primHash,
+        return _putEntry(currentTime, TimeUtil.secondsToInternal(timeToLiveSecs), primaryKey, primHash,
                 secondaryKey, secHash, value, weight);
     }
     
@@ -129,7 +130,7 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
             K1 primaryKey, int primaryKeyHash, K2 secondaryKey, int secondaryKeyHash,
             V value, int weight)
     {
-        return _putEntry(currentTime, _secondsToInternal(timeToLiveSecs), primaryKey, primaryKeyHash,
+        return _putEntry(currentTime, TimeUtil.secondsToInternal(timeToLiveSecs), primaryKey, primaryKeyHash,
                 secondaryKey, secondaryKeyHash, value, weight);
     }
 
@@ -158,7 +159,7 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
         }
         TwoKeyPOJOCacheEntry<K1, K2, V> newEntry = new TwoKeyPOJOCacheEntry<K1, K2, V>(
                 primaryKey, primaryKeyHash, secondaryKey, secondaryKeyHash,
-                value, _timeToTimestamp(currentTime) + timeToLiveQ, weight,
+                value, TimeUtil.timeToTimestamp(currentTime) + timeToLiveQ, weight,
                 nextPrimary, nextSecondary);
         _entries[primaryIndex] = newEntry;
         if (secondaryKey != null) {
@@ -188,7 +189,7 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
         // First, locate the entry, but keep track of position within hash/collision chain:
         TwoKeyPOJOCacheEntry<K1, K2, V> prev = null;
         TwoKeyPOJOCacheEntry<K1, K2, V> entry = _secondaryEntries[index];
-        int currTimeInQ = _timeToTimestamp(currentTime);
+        int currTimeInQ = TimeUtil.timeToTimestamp(currentTime);
 
         while (entry != null) {
             if ((entry._keyHash2 == secondaryHash) && _secondaryKeyConverter.keysEqual(secondaryKey, entry.getSecondaryKey())) {
