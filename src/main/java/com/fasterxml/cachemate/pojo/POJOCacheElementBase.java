@@ -141,7 +141,7 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
     {
         _keyConverter = keyConverter;
         _maxEntries = maxEntries;
-        _configTimeToLive = TimeUtil.secondsToInternal((int) timeToLiveSecs);
+        _configTimeToLive = TimeUtil.secondsToInternal(timeToLiveSecs);
         _entries = entries;
     }
     
@@ -358,6 +358,7 @@ abstract class POJOCacheElementBase<K, V, E extends POJOCacheEntryBase<K,V,E>>
     @Override
     public abstract long weight();
     
+    @Override
     public CacheStats getStats() {
         return new CacheStats(_hitCount, _missCount, _insertCount,
                 size(), weight(), contentsWeight(),

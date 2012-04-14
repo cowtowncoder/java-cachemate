@@ -110,7 +110,7 @@ public abstract class RawCacheElementBase
     
     protected RawCacheElementBase(int timeToLiveSecs, Hasher keyHasher)
     {
-        _configTimeToLive = TimeUtil.secondsToInternal((int) timeToLiveSecs);
+        _configTimeToLive = TimeUtil.secondsToInternal(timeToLiveSecs);
         _keyHasher = keyHasher;
     }
     

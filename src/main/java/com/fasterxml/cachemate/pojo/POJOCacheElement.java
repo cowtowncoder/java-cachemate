@@ -120,6 +120,7 @@ public class POJOCacheElement<K, V>
         throw new IllegalStateException("Internal data error: could not find entry (index "+index+"/"+_entries.length+"), _key "+entry.getKey());
     }
 
+    @Override
     protected final POJOCacheEntry<K,V> _removeByPrimary(long currentTime, K key, int keyHash)
     {
         int index = (keyHash & (_entries.length - 1));

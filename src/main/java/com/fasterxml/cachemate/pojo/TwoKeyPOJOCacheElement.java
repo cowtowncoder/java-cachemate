@@ -414,6 +414,7 @@ public class TwoKeyPOJOCacheElement<K1,K2,V>
      * could be corrupt due to synchronization issues (incorrect multi-threaded
      * use of instance without proper synchronization)
      */
+    @Override
     protected void checkSanity()
     {
         super.checkSanity();
