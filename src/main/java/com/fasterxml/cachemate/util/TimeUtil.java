@@ -23,7 +23,7 @@ public class TimeUtil
         return (int) (msecs >>> 8);
     }
     
-    public final static int timeToTimestamp(long currentTimeMsecs)
+    public static int timeToTimestamp(long currentTimeMsecs)
     {
         int time = (int) (currentTimeMsecs >> 8); // divide by 256, to quarter-seconds
         if (time < 0) {
@@ -32,4 +32,10 @@ public class TimeUtil
         return time;
     }
 
+    public static long getExpirationInMilliSeconds(long currentTime, int expirationTime)
+    {
+        long expiryInMsecs = ((long) expirationTime << 8);
+        long diff = expiryInMsecs - currentTime;
+        return (diff < 0L) ? 0L : diff;
+    }
 }

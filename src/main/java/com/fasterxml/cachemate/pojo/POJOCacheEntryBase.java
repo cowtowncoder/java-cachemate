@@ -1,6 +1,7 @@
 package com.fasterxml.cachemate.pojo;
 
 import com.fasterxml.cachemate.CacheEntry;
+import com.fasterxml.cachemate.util.TimeUtil;
 
 /*
  * Shared base class for various {@link CacheEntry}
@@ -152,11 +153,8 @@ abstract class POJOCacheEntryBase<K, V, SUBTYPE extends POJOCacheEntryBase<K, V,
      */
 
     @Override
-    public long getExpirationInMilliSeconds(long currentTime)
-    {
-        long expiryInMsecs = ((long) _expirationTime << 8);
-        long diff = expiryInMsecs - currentTime;
-        return (diff < 0L) ? 0L : diff;
+    public long getExpirationInMilliSeconds(long currentTime) {
+        return TimeUtil.getExpirationInMilliSeconds(currentTime, _expirationTime);
     }
     
     /*

@@ -13,4 +13,31 @@ import java.nio.ByteBuffer;
  */
 public class WritableSlab
 {
+    /*
+    /**********************************************************************
+    /* Construction
+    /**********************************************************************
+     */
+
+    public WritableSlab()
+    {
+    }
+    
+    /*
+    /**********************************************************************
+    /* Public API
+    /**********************************************************************
+     */
+
+    /**
+     * @param key Primary key of the entry to find
+     * @param keyHash Full hash code of the entry
+     * 
+     * @return Entry with specified primary key, if any contained; null if not
+     */
+    public EntryReference findEntry(ByteBuffer bbuf, byte[] key, int keyHash)
+    {
+        // !!! TODO
+        return null;
+    }
 }

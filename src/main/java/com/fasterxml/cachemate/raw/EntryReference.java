@@ -15,28 +15,28 @@ import java.nio.ByteBuffer;
  */
 public class EntryReference
 {
-	/**
-	 * Underlying buffer in which entry is stored
-	 */
-	protected final ByteBuffer _buffer;
+    /**
+     * Underlying buffer in which entry is stored
+     */
+    protected final ByteBuffer _buffer;
 
-	protected final int _startOffset;
+    protected final int _startOffset;
 
-	protected final int _timestamp;
+    protected final int _timestamp;
 	
-	protected final int _keyOffset;
-	protected final int _keyLength;
+    protected final int _keyOffset;
+    protected final int _keyLength;
 	
-	public EntryReference(ByteBuffer buf, int start)
-	{
-		_buffer = buf;
-		_startOffset = start;
-		buf.position(start);
-		// decode basic info eagerly
-		_timestamp = buf.getInt();
-		_keyLength = _readVInt(buf);
-		_keyOffset = buf.position();
-	}
+    public EntryReference(ByteBuffer buf, int start)
+    {
+        _buffer = buf;
+        _startOffset = start;
+        buf.position(start);
+        // decode basic info eagerly
+        _timestamp = buf.getInt();
+        _keyLength = _readVInt(buf);
+        _keyOffset = buf.position();
+    }
 
     /*
     /**********************************************************************
@@ -44,41 +44,48 @@ public class EntryReference
     /**********************************************************************
      */
 
-	public boolean hasKey(byte[] key)
-	{
-		if (key.length != _keyLength) {
-			return false;
-		}
-		final ByteBuffer buf = _buffer;
-		buf.position(_keyOffset);
-		for (int i = 0, end = _keyLength; i < end; ++i) {
-			if (buf.get() != key[i]) {
-				return false;
-			}
-		}
-		return true;
-	}
-	
+    public boolean hasKey(byte[] key)
+    {
+        if (key.length != _keyLength) {
+            return false;
+        }
+        final ByteBuffer buf = _buffer;
+        buf.position(_keyOffset);
+        for (int i = 0, end = _keyLength; i < end; ++i) {
+            if (buf.get() != key[i]) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public int getTimestamp() { return _timestamp; }
+
+    public RawCacheEntry asCacheEntry(long currentTime)
+    {
+        
+    }
+    
     /*
     /**********************************************************************
     /* Internal methods
     /**********************************************************************
      */
 
-	private final int _readVInt(ByteBuffer bbuf)
-	{
-		int value = bbuf.get();
-		// short-cut for common case:
-		if (value >= 0) {
-			return value;
-		}
-		value = value & 0x7F;
+    private final int _readVInt(ByteBuffer bbuf)
+    {
+        int value = bbuf.get();
+        // short-cut for common case:
+        if (value >= 0) {
+            return value;
+        }
+        value = value & 0x7F;
 
-		int b;
-		while ((b = bbuf.get()) < 0) {
-			value = (value << 7) | (b & 0x7F);
-		}
-		value = (value << 7) | b;
-		return value;
-	}
+        int b;
+        while ((b = bbuf.get()) < 0) {
+            value = (value << 7) | (b & 0x7F);
+        }
+        value = (value << 7) | b;
+        return value;
+    }
 }

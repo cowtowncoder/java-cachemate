@@ -98,7 +98,11 @@ public final class ReadOnlySlab
         _entryCount = entryCount;
         _hashCollisions = hashCollisions;
     }
-	
+
+    public ReadOnlySlab nextSlab() {
+        return _nextSlab.get();
+    }
+    
     /*
     /**********************************************************************
     /* Public API
