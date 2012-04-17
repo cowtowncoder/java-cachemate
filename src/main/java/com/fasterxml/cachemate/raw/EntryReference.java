@@ -63,7 +63,8 @@ public class EntryReference
 
     public RawCacheEntry asCacheEntry(long currentTime)
     {
-        
+        // !!! TODO
+        throw new RuntimeException();
     }
     
     /*
