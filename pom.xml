@@ -3,7 +3,7 @@
   <parent>
     <groupId>org.sonatype.oss</groupId>
     <artifactId>oss-parent</artifactId>
-    <version>5</version>
+    <version>7</version>
   </parent>
   <groupId>com.fasterxml</groupId>
   <artifactId>cachemate</artifactId>
@@ -59,16 +59,16 @@
     <plugins>
       <plugin>
         <artifactId>maven-compiler-plugin</artifactId>
-        <version>2.3.2</version>
+        <version>2.5.1</version>
         <configuration>
-          <source>1.6</source>
-          <target>1.6</target>
+          <source>1.7</source>
+          <target>1.7</target>
         </configuration>
       </plugin>
         <plugin>
             <groupId>org.apache.maven.plugins</groupId>
             <artifactId>maven-release-plugin</artifactId>
-            <version>2.0</version>
+            <version>2.4.1</version>
             <configuration>
                 <mavenExecutorId>forked-path</mavenExecutorId>
             </configuration>
@@ -114,13 +114,13 @@
         <plugin>
           <groupId>org.apache.felix</groupId>
           <artifactId>maven-bundle-plugin</artifactId>
-          <version>2.3.6</version>
+          <version>2.3.7</version>
           <extensions>true</extensions>
           <configuration>
             <instructions>
               <Bundle-Name>cachemate</Bundle-Name>
               <Bundle-SymbolicName>${project.artifactId}</Bundle-SymbolicName>
-              <Bundle-Description>Type introspection library</Bundle-Description>
+              <Bundle-Description>Multi-level cache library</Bundle-Description>
               <Bundle-Vendor>fasterml.com</Bundle-Vendor>
               <Import-Package>
 </Import-Package>
@@ -129,7 +129,8 @@
               <Export-Package>
 com.fasterxml.cachemate,
 com.fasterxml.cachemate.converters,
-com.fasterxml.cachemate.pojo
+com.fasterxml.cachemate.pojo,
+com.fasterxml.cachemate.util
 </Export-Package>
             </instructions>
           </configuration>
